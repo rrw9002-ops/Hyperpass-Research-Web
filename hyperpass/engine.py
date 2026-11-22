@@ -41,6 +41,7 @@ def arr(items):
 STR = {"type": "string"}
 BOOL = {"type": "boolean"}
 TASK = obj({"role": {"type": "string", "enum": list(ROLES)}, "question": STR, "input_ids": arr(STR)})
+TASK_CORRECTION = obj({"tasks": arr(TASK), "reason": STR})
 READINESS = {"type": "string", "enum": ["factual", "screen", "decision-grade", "insufficient"]}
 PLAN = obj({"outcome": STR, "horizon": STR, "as_of": STR, "direct_answer": STR,
             "require_risk": BOOL, "tasks": arr(TASK), "reason": STR})
@@ -114,9 +115,14 @@ work needed now; server gates deferred review after evidence acceptance. Preserv
 the user's selected scope and available call_limit when choosing the minimum team.
 If Decision Memory is supplied after the independent current view, state whether it changed
 that view and why; record the before/after distinction instead of treating memory as evidence.
-At reassessment, state acceptance for every pending artifact exactly once. When more work is
-material use delegate and name explicit tasks. To finish, provide your complete candidate report
-in conclusion, with evidence chain, limitations, contrary case, readiness and update triggers.
+At reassessment, state acceptance for every pending artifact exactly once.
+The acceptances array contains ONLY the current pending artifact IDs, one row per ID. It is
+not a cumulative acceptance history: never repeat IDs from the separate accepted array.
+For example, accepted=[technical-analyst-v1] and pending=[risk-manager-v1] requires exactly
+one acceptance row for risk-manager-v1, choosing accepted/revise/blocked from its evidence.
+When more work is material use delegate and name explicit tasks. To finish, provide your
+complete candidate report in conclusion, with evidence chain, limitations, contrary case,
+readiness and update triggers.
 The server obtains mandatory independent reviews. After a review, if finishing without substantive
 changes, return the previous candidate_report VERBATIM in conclusion. Changing that candidate
 requires another review. A reviewer verdict revise/blocked cannot be overridden as accepted;
@@ -127,6 +133,17 @@ is evidence quality, not trade approval. You cannot raise readiness past the evi
 
 class WorkflowError(RuntimeError):
     pass
+
+
+class TaskShapeError(WorkflowError):
+    def __init__(self, duplicate_roles, invalid_input_ids, accepted_input_ids):
+        self.feedback = {"duplicate_roles": duplicate_roles,
+                         "invalid_input_ids": [identity[:160] for identity in invalid_input_ids],
+                         "invalid_ids_truncated": any(len(identity) > 160 for identity in invalid_input_ids),
+                         "accepted_input_ids": accepted_input_ids}
+        super().__init__("작업 목록의 역할 중복 또는 근거 참조를 확인해야 합니다. "
+                         f"duplicate_roles={duplicate_roles}, invalid_input_ids={self.feedback['invalid_input_ids']}, "
+                         f"accepted_input_ids={accepted_input_ids}")
 
 
 class BudgetExceeded(Exception):
@@ -290,12 +307,12 @@ class Engine:
         return bool(current and current[0]["review_verdict"] == "accept"
                     and current[0]["review_fingerprint"] == self._fingerprint(role))
 
-    def _tasks(self, tasks):
+    def _validate_tasks(self, tasks, dispatch=False):
+        """Pure validation: never mutate role state while checking a batch."""
+        validate(tasks, arr(TASK), "tasks")
         if not tasks or len(tasks) > 9:
             raise WorkflowError("실행할 역할 작업이 없거나 너무 많습니다.")
-        if len({t["role"] for t in tasks}) != len(tasks):
-            raise WorkflowError("같은 담당자에게 동시에 중복 작업을 배정할 수 없습니다.")
-        if len(tasks) > 1 and any(t["role"] in REVIEWERS for t in tasks):
+        if dispatch and len(tasks) > 1 and any(t["role"] in REVIEWERS for t in tasks):
             raise WorkflowError("독립 검토는 현재 근거가 채택된 뒤 별도 단계에서 실행해야 합니다.")
         accepted = {a["id"] for a in self._current()}
         for task in tasks:
@@ -303,12 +320,59 @@ class Engine:
                 raise WorkflowError("허용되지 않은 역할 또는 빈 분석 질문입니다.")
             if self.target_role and task["role"] not in REVIEWERS and task["role"] != self.target_role:
                 raise WorkflowError("지정한 에이전트의 범위를 넘어 다른 전문 분석이 필요합니다. 저장된 중간 근거를 확인하고 종합 분석으로 다시 질문해 주세요.")
-            if any(i not in accepted for i in task["input_ids"]):
-                raise WorkflowError("작업이 채택되지 않았거나 지난 버전의 근거를 참조했습니다.")
-            if task["role"] in REVIEWERS and not self._review_inputs(task["role"]):
+            if dispatch and task["role"] in REVIEWERS and not self._review_inputs(task["role"]):
                 raise WorkflowError("독립 검토에 필요한 채택 근거가 없습니다.")
-            if task["role"] == "portfolio-manager":
-                self.require_risk = True
+        roles = [task["role"] for task in tasks]
+        duplicates = sorted(role for role in set(roles) if roles.count(role) > 1)
+        invalid_inputs = sorted({identity for task in tasks for identity in task["input_ids"] if identity not in accepted})
+        if duplicates or invalid_inputs:
+            raise TaskShapeError(duplicates, invalid_inputs, sorted(accepted))
+        return tasks
+
+    def _tasks(self, tasks):
+        try:
+            return self._validate_tasks(tasks)
+        except TaskShapeError as exc:
+            feedback = exc.feedback
+            self._event("task_shape_error", message=str(exc),
+                        status="revising" if self.calls < self.max_calls else "budget_exhausted", **feedback)
+        # The model must explicitly repair the original work. Do not silently
+        # merge questions, drop source references or change the requested team.
+        original_roles = sorted({task["role"] for task in tasks})
+        original_tasks = [{**task, "input_ids": list(task["input_ids"])} for task in tasks]
+        instructions = self._head_instructions() + (
+            "\nTASK-LIST FORMAT CORRECTION ONLY. Return tasks and reason. Preserve the EXACT set "
+            "of original distinct roles: do not add, remove or exchange roles. Preserve the intent "
+            "of every original question. If the same role has several questions, explicitly return "
+            "one bounded task for that role covering those questions and explain the consolidation "
+            "in reason. Do not invent another research objective. input_ids may contain only IDs "
+            "from accepted_input_ids. A raw source/attachment ID belongs in the question, not in "
+            "input_ids; source attachments are automatically provided to producers. Do not pretend "
+            "an unavailable or unaccepted dependency exists by merely deleting its ID. If the work "
+            "cannot be preserved, return no tasks and explain the limit; this blocks the run. "
+            "This correction does not accept evidence, change the candidate or override review gates.")
+        payload = {"stage": "task_correction", "role": "head-manager", "mandate": self.mandate,
+                   "original_tasks": original_tasks, "required_roles": original_roles,
+                   "accepted_input_ids": feedback["accepted_input_ids"], "task_shape_feedback": feedback,
+                   "accepted": [self._public_artifact(artifact) for artifact in self._current()],
+                   "candidate_report": self.draft, "remaining_calls": self.max_calls - self.calls,
+                   "provided_evidence": self.evidence, "selected_context": self.active_context,
+                   "web_search_available": False}
+        decision, _ = self._call("head-manager", instructions, payload, TASK_CORRECTION)
+        corrected = decision["tasks"]
+        try:
+            if sorted({task["role"] for task in corrected}) != original_roles:
+                raise WorkflowError("작업 목록 형식 보정은 원래 역할을 추가·삭제·교체할 수 없습니다.")
+            if not decision["reason"].strip():
+                raise WorkflowError("작업 목록 보정 이유가 없습니다.")
+            self._validate_tasks(corrected)
+        except WorkflowError as exc:
+            self._event("task_correction_rejected", message=str(exc), status="blocked",
+                        original_roles=original_roles, received_roles=[task["role"] for task in corrected])
+            raise WorkflowError("작업 목록 형식 보정 후에도 실행 조건을 충족하지 못했습니다. " + str(exc)) from None
+        self._event("task_correction", message=decision["reason"], status="planned",
+                    original_tasks=original_tasks, tasks=corrected)
+        return corrected
 
     def _review_task(self, role):
         request = self.deferred_reviews.get(role)
@@ -405,8 +469,11 @@ class Engine:
         return artifact
 
     def _batch(self, tasks):
+        tasks = self._tasks(tasks)
         tasks = self._schedule(tasks)
-        self._tasks(tasks)
+        self._validate_tasks(tasks, dispatch=True)
+        if any(task["role"] == "portfolio-manager" for task in tasks):
+            self.require_risk = True
         # Validate reservation for the complete batch before any call is sent.
         if self.calls + len(tasks) > self.max_calls:
             raise BudgetExceeded()
@@ -439,11 +506,35 @@ class Engine:
                    "deferred_reviews": self.deferred_reviews,
                    "selected_context": self.active_context,
                    "decision_memory_after_independent_current_view": self.memory if self.artifacts else ""}
-        decision, _ = self._call("head-manager", self._head_instructions(), payload, ASSESS)
         expected = {a["id"] for a in pending}
-        rows = decision["acceptances"]
-        if {x["artifact_id"] for x in rows} != expected or len(rows) != len(expected):
-            raise WorkflowError("Head Manager가 모든 현재 산출물의 채택 여부를 명시하지 않았습니다.")
+        instructions = self._head_instructions()
+        for attempt in range(2):
+            payload = dict(payload, remaining_calls=self.max_calls - self.calls)
+            decision, _ = self._call("head-manager", instructions, payload, ASSESS)
+            rows = decision["acceptances"]
+            received = [row["artifact_id"] for row in rows]
+            if set(received) == expected and len(rows) == len(expected):
+                break
+            # This narrowly repairs reference formatting, not review verdicts or
+            # evidence quality. No part of the rejected decision is applied.
+            bounded_received = [identity[:160] for identity in received]
+            feedback = {"code": "invalid_acceptance_references",
+                        "expected_artifact_ids": sorted(expected),
+                        "received_artifact_ids": bounded_received,
+                        "received_ids_truncated": any(len(identity) > 160 for identity in received),
+                        "instruction": "Return a full reassessment with exactly one acceptance row for each current pending ID and no other IDs. Do not repeat already accepted artifacts. The previous decision was rejected in full; none of its acceptance, conclusion, readiness or risk changes was applied. Preserve the evidence and independent review verdicts."}
+            detail = ("채택 목록의 근거 ID가 현재 검토 대기 목록과 다릅니다. "
+                      f"expected={sorted(expected)}, received={bounded_received}")
+            status = "blocked" if attempt else "revising" if self.calls < self.max_calls else "budget_exhausted"
+            self._event("acceptance_reference_error", message=detail, status=status,
+                        correction_attempt=attempt + 1, **{key: feedback[key] for key in (
+                            "expected_artifact_ids", "received_artifact_ids", "received_ids_truncated")})
+            if attempt:
+                raise WorkflowError("Head Manager의 채택 목록 형식 보정 후에도 오류가 남았습니다. " + detail)
+            if self.calls >= self.max_calls:
+                raise BudgetExceeded()
+            payload = dict(payload, acceptance_reference_feedback=feedback)
+            instructions += "\nCORRECTION REQUIRED: follow acceptance_reference_feedback. Resubmit the complete response schema; only current pending IDs belong in acceptances, exactly once each. Do not alter review verdicts to make the format pass."
         mapping = {x["artifact_id"]: x for x in rows}
         for artifact in pending:
             row = mapping[artifact["id"]]
@@ -531,11 +622,9 @@ class Engine:
             self.require_risk = plan["require_risk"]
             if self.target_role:
                 chosen = [task for task in plan["tasks"] if task["role"] == self.target_role]
-                if len(chosen) > 1:
-                    raise WorkflowError("지정한 담당자에게 동시에 중복 작업을 배정할 수 없습니다.")
-                selected_task = chosen[0] if chosen else {"role": self.target_role, "question": question, "input_ids": []}
+                selected_tasks = chosen or [{"role": self.target_role, "question": question, "input_ids": []}]
                 # Selection is a user constraint. Review intents remain deferred, never primary work.
-                plan["tasks"] = [selected_task] + [task for task in plan["tasks"] if task["role"] in REVIEWERS]
+                plan["tasks"] = selected_tasks + [task for task in plan["tasks"] if task["role"] in REVIEWERS]
                 plan["direct_answer"] = ""
                 self._event("scope_selected", self.target_role, "지정한 에이전트가 분석하고 Head Manager와 독립 검토자가 결과를 검수합니다.",
                             status="planned", target_role=self.target_role)

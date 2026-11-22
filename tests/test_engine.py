@@ -25,7 +25,13 @@ class Scripted(DemoProvider):
     def complete(self, instructions, payload, *, schema=None, web_search=False):
         with self.lock:
             self.seen.append({"instructions": instructions, "payload": payload, "web_search": web_search})
-            result = super().complete(instructions, payload, schema=schema, web_search=web_search)
+            if payload["stage"] == "task_correction":
+                # A correction is deliberately unchanged unless this case's
+                # explicit fixture supplies a corrected model response.
+                result = {"data": {"tasks": [{**task, "input_ids": list(task["input_ids"])} for task in payload["original_tasks"]],
+                                   "reason": "Fixture retained the original tasks."}, "usage": {}}
+            else:
+                result = super().complete(instructions, payload, schema=schema, web_search=web_search)
             if self.edit:
                 self.edit(payload, result["data"])
             return result
@@ -75,7 +81,8 @@ class EngineTests(unittest.TestCase):
                 data["tasks"][0]["input_ids"] = ["fabricated-receipt"]
         result, _, _ = self.run_engine(Scripted(edit))
         self.assertEqual(result["status"], "blocked")
-        self.assertEqual(result["usage"]["calls"], 1)
+        self.assertEqual(result["usage"]["calls"], 2)
+        self.assertEqual(result["artifacts"], [])
 
     def test_first_task_keeps_source_attachment_with_empty_artifact_input_ids(self):
         evidence = json.dumps({"provider": "tradingview_strategy_tester", "report_id": "9" * 32,
@@ -105,9 +112,273 @@ class EngineTests(unittest.TestCase):
         result = Engine(provider, lambda event: None, lambda: False, ROOT).run(
             "첨부 보고서를 검토하세요.", evidence=json.dumps({"report_id": source_id}))
         self.assertEqual(result["status"], "blocked")
-        self.assertEqual(result["usage"]["calls"], 1)
+        self.assertEqual(result["usage"]["calls"], 2)
         self.assertEqual(result["artifacts"], [])
         self.assertFalse(result["report_complete"])
+
+    def test_initial_duplicate_tasks_are_corrected_by_head_before_any_specialist(self):
+        for target in (None, "technical-analyst"):
+            role = target or "fundamental-analyst"
+            first_question, second_question = "첫 번째 근거를 확인하세요.", "두 번째 반대 근거를 확인하세요."
+            def edit(payload, data):
+                if payload["stage"] == "plan":
+                    data["tasks"] = [{"role": role, "question": question, "input_ids": []}
+                                     for question in (first_question, second_question)]
+                if payload["stage"] == "task_correction":
+                    self.assertEqual(engine.artifacts, [])
+                    self.assertEqual(engine.deferred_reviews, {})
+                    self.assertEqual(payload["required_roles"], [role])
+                    self.assertEqual([task["question"] for task in payload["original_tasks"]], [first_question, second_question])
+                    data["tasks"] = [{"role": role, "question": first_question + " " + second_question, "input_ids": []}]
+                    data["reason"] = "같은 담당자가 원래 두 질문을 함께 검토하도록 명시적으로 보정합니다."
+            provider = Scripted(edit)
+            events = []
+            engine = Engine(provider, events.append, lambda: False, ROOT)
+            with self.subTest(target=target):
+                result = engine.run("두 근거를 함께 검토하세요.", evidence="fixture", target_role=target)
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["usage"]["calls"], 6)
+                self.assertEqual([call["payload"]["stage"] for call in provider.seen[:3]], ["plan", "task_correction", "specialist"])
+                self.assertEqual([a["role"] for a in result["artifacts"]], [role, "judgment-reviewer"])
+                correction = next(event for event in events if event["type"] == "task_correction")
+                self.assertEqual(len(correction["original_tasks"]), 2)
+                self.assertEqual(correction["tasks"][0]["question"], first_question + " " + second_question)
+
+    def test_duplicate_followup_correction_preserves_owner_and_latest_review(self):
+        def edit(payload, data):
+            if payload["stage"] == "reassess" and payload["pending"][0]["id"] == "fundamental-analyst-v1":
+                data["next_action"] = "delegate"
+                data["tasks"] = [{"role": "fundamental-analyst", "question": question, "input_ids": ["fundamental-analyst-v1"]}
+                                 for question in ("현금 전환을 보완하세요.", "반대 가설을 보완하세요.")]
+            if payload["stage"] == "task_correction":
+                self.assertEqual(payload["accepted_input_ids"], ["fundamental-analyst-v1"])
+                data["tasks"] = [{"role": "fundamental-analyst", "question": "현금 전환과 반대 가설을 보완하세요.",
+                                  "input_ids": ["fundamental-analyst-v1"]}]
+                data["reason"] = "원래 보완 질문 둘을 같은 담당자의 한 작업으로 묶습니다."
+        result, _, provider = self.run_engine(Scripted(edit))
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["usage"]["calls"], 8)
+        first, revised, review = result["artifacts"]
+        self.assertEqual(first["owner_id"], revised["owner_id"])
+        self.assertEqual(review["input_ids"], ["fundamental-analyst-v2"])
+        self.assertEqual(len([call for call in provider.seen if call["payload"]["stage"] == "task_correction"]), 1)
+
+    def test_repeated_task_shape_error_blocks_before_dispatch_or_role_state_mutation(self):
+        for fault in ("duplicate", "reference"):
+            def edit(payload, data):
+                if payload["stage"] != "plan":
+                    return
+                first = {"role": "portfolio-manager", "question": "제공된 노출만 검토하세요.", "input_ids": []}
+                if fault == "reference":
+                    first["input_ids"] = ["unaccepted-source-id"]
+                data["tasks"] = [first]
+                if fault == "duplicate":
+                    data["tasks"].append({"role": "portfolio-manager", "question": "제공된 집중도만 검토하세요.", "input_ids": []})
+                data["tasks"].append({"role": "risk-manager", "question": "근거 채택 후 독립 검토", "input_ids": []})
+            provider = Scripted(edit)  # Its correction deliberately repeats the fault.
+            engine = Engine(provider, lambda event: None, lambda: False, ROOT)
+            with self.subTest(fault=fault):
+                result = engine.run("제공된 포트폴리오 검토", evidence="fixture")
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["usage"]["calls"], 2)
+                self.assertEqual(result["artifacts"], [])
+                self.assertEqual(engine.owners, {})
+                self.assertEqual(engine.deferred_reviews, {})
+                self.assertFalse(engine.require_risk)
+                self.assertEqual([call["payload"]["stage"] for call in provider.seen], ["plan", "task_correction"])
+
+    def test_head_can_correct_source_reference_without_losing_provided_evidence(self):
+        evidence = json.dumps({"report_id": "raw-source-id", "observations": ["fixture"]})
+        def edit(payload, data):
+            if payload["stage"] == "plan":
+                data["tasks"][0]["input_ids"] = ["raw-source-id"]
+            if payload["stage"] == "task_correction":
+                self.assertEqual(payload["accepted_input_ids"], [])
+                self.assertEqual(payload["provided_evidence"], evidence)
+                data["tasks"] = [{"role": "fundamental-analyst", "question": "제공된 raw-source-id 원자료를 검토하세요.", "input_ids": []}]
+                data["reason"] = "원자료는 provided_evidence로 전달되며 채택된 전문 산출물이 아니므로 원자료 ID를 질문에 명시합니다."
+        provider = Scripted(edit)
+        result = Engine(provider, lambda event: None, lambda: False, ROOT).run("첨부 검토", evidence=evidence)
+        self.assertEqual(result["status"], "completed")
+        producer = next(call for call in provider.seen if call["payload"].get("role") == "fundamental-analyst")
+        self.assertEqual(producer["payload"]["provided_evidence"], evidence)
+        self.assertEqual(producer["payload"]["accepted_inputs"], [])
+        self.assertEqual(result["artifacts"][0]["input_ids"], [])
+        self.assertTrue(result["reviews"]["judgment-reviewer"])
+
+    def test_task_correction_cannot_add_remove_or_exchange_roles(self):
+        for change in ("add", "remove", "exchange", "unknown"):
+            def edit(payload, data):
+                if payload["stage"] == "plan":
+                    data["tasks"] = [{"role": "fundamental-analyst", "question": question, "input_ids": []}
+                                     for question in ("사업 확인", "현금 전환 확인")]
+                    if change == "remove":
+                        data["tasks"].append({"role": "news-analyst", "question": "관련 뉴스 확인", "input_ids": []})
+                if payload["stage"] == "task_correction":
+                    data["tasks"] = [{"role": "fundamental-analyst", "question": "사업과 현금 전환 확인", "input_ids": []}]
+                    if change == "add":
+                        data["tasks"].append({"role": "news-analyst", "question": "새 뉴스 작업", "input_ids": []})
+                    if change in ("exchange", "unknown"):
+                        data["tasks"][0]["role"] = "technical-analyst" if change == "exchange" else "execute-order"
+                    data["reason"] = "Fixture attempts an unauthorized role change."
+            with self.subTest(change=change):
+                result, _, provider = self.run_engine(Scripted(edit))
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["usage"]["calls"], 2)
+                self.assertEqual(result["artifacts"], [])
+                self.assertFalse(any(call["payload"]["stage"] == "specialist" for call in provider.seen))
+
+    def test_task_correction_uses_budget_without_skipping_review(self):
+        def edit(payload, data):
+            if payload["stage"] == "plan":
+                data["tasks"] *= 2
+            if payload["stage"] == "task_correction":
+                data["tasks"] = [data["tasks"][0]]
+                data["reason"] = "중복된 동일 질문을 같은 담당자의 한 작업으로 보정합니다."
+        result, _, provider = self.run_engine(Scripted(edit), max_calls=4)
+        self.assertEqual(result["status"], "budget_exhausted")
+        self.assertEqual(result["usage"]["calls"], 4)
+        self.assertFalse(result["report_complete"])
+        self.assertFalse(result["reviews"]["judgment-reviewer"])
+        self.assertEqual(len(provider.seen), 4)
+
+    def test_task_correction_never_exceeds_an_already_exhausted_budget(self):
+        def edit(payload, data):
+            if payload["stage"] == "reassess" and payload["pending"][0]["role"] == "judgment-reviewer":
+                data["next_action"] = "delegate"
+                data["tasks"] = [{"role": "fundamental-analyst", "question": "같은 담당자의 보완", "input_ids": []}] * 2
+        result, _, provider = self.run_engine(Scripted(edit), max_calls=5)
+        self.assertEqual(result["status"], "budget_exhausted")
+        self.assertEqual(result["usage"]["calls"], 5)
+        self.assertEqual(len(provider.seen), 5)
+        self.assertFalse(any(call["payload"]["stage"] == "task_correction" for call in provider.seen))
+        self.assertEqual([a["id"] for a in result["artifacts"]], ["fundamental-analyst-v1", "judgment-reviewer-v1"])
+
+    def test_wrong_task_schema_is_not_sent_for_shape_correction(self):
+        def edit(payload, data):
+            if payload["stage"] == "plan":
+                data["tasks"][0]["input_ids"] = "not-an-array"
+        result, _, provider = self.run_engine(Scripted(edit))
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(len(provider.seen), 1)
+        self.assertEqual(result["artifacts"], [])
+
+    def test_reassessment_repairs_cumulative_acceptance_ids_once_without_applying_bad_decision(self):
+        events = []
+        prior_draft = []
+        def edit(payload, data):
+            if payload["stage"] == "plan":
+                data["require_risk"] = True
+            if payload["stage"] != "reassess" or payload["pending"][0]["role"] != "risk-manager":
+                return
+            if "acceptance_reference_feedback" not in payload:
+                prior_draft.append(engine.draft)
+                data["acceptances"].append({"artifact_id": "technical-analyst-v1", "state": "blocked", "reason": "invalid cumulative row"})
+                data["conclusion"] = "REJECTED CANDIDATE MUST NOT BE APPLIED"
+                data["evidence_readiness"] = "decision-grade"
+            else:
+                self.assertEqual(engine.draft, prior_draft[0])
+                self.assertEqual(payload["candidate_report"], prior_draft[0])
+                self.assertEqual([a["state"] for a in engine.artifacts], ["accepted", "pending"])
+                feedback = payload["acceptance_reference_feedback"]
+                self.assertEqual(feedback["expected_artifact_ids"], ["risk-manager-v1"])
+                self.assertEqual(feedback["received_artifact_ids"], ["risk-manager-v1", "technical-analyst-v1"])
+        provider = Scripted(edit)
+        engine = Engine(provider, events.append, lambda: False, ROOT)
+        result = engine.run("제공 자료의 위험을 검토하세요.", evidence="fixture", target_role="technical-analyst")
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["usage"]["calls"], 8)
+        self.assertTrue(result["reviews"]["risk-manager"])
+        self.assertTrue(result["reviews"]["judgment-reviewer"])
+        self.assertNotIn("REJECTED CANDIDATE", result["report"])
+        corrections = [call for call in provider.seen if "acceptance_reference_feedback" in call["payload"]]
+        self.assertEqual(len(corrections), 1)
+        self.assertEqual(corrections[0]["payload"]["remaining_calls"], 7)
+        warnings = [event for event in events if event["type"] == "acceptance_reference_error"]
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["received_artifact_ids"], ["risk-manager-v1", "technical-analyst-v1"])
+
+    def test_repeated_acceptance_id_errors_block_without_partial_state_changes(self):
+        for fault in ("missing", "duplicate", "unexpected"):
+            events = []
+            def edit(payload, data):
+                if payload["stage"] != "reassess":
+                    return
+                if fault == "missing":
+                    data["acceptances"] = []
+                elif fault == "duplicate":
+                    data["acceptances"] *= 2
+                else:
+                    data["acceptances"][0]["artifact_id"] = "unaccepted-source-id"
+                data["conclusion"] = "REJECTED CANDIDATE"
+                data["require_risk"] = True
+                data["evidence_readiness"] = "decision-grade"
+            provider = Scripted(edit)
+            engine = Engine(provider, events.append, lambda: False, ROOT)
+            with self.subTest(fault=fault):
+                result = engine.run("fixture research", evidence="fixture")
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["usage"]["calls"], 4)
+                self.assertEqual(result["artifacts"][0]["state"], "pending")
+                self.assertEqual(engine.draft, "")
+                self.assertFalse(engine.require_risk)
+                self.assertEqual(engine.readiness, "insufficient")
+                self.assertFalse(any(event["type"] == "acceptance" for event in events))
+                self.assertEqual(len([event for event in events if event["type"] == "acceptance_reference_error"]), 2)
+                self.assertIn("expected=", result["reason"])
+                self.assertIn("received=", result["reason"])
+
+    def test_acceptance_correction_counts_against_existing_call_budget(self):
+        def edit(payload, data):
+            if payload["stage"] == "reassess" and "acceptance_reference_feedback" not in payload:
+                data["acceptances"] = []
+        result, _, provider = self.run_engine(Scripted(edit), max_calls=4)
+        self.assertEqual(result["status"], "budget_exhausted")
+        self.assertEqual(result["usage"]["calls"], 4)
+        self.assertFalse(result["report_complete"])
+        self.assertFalse(result["reviews"]["judgment-reviewer"])
+        self.assertFalse(any(call["payload"].get("role") == "judgment-reviewer" for call in provider.seen))
+
+    def test_acceptance_error_at_call_limit_does_not_send_an_extra_request(self):
+        def edit(payload, data):
+            if payload["stage"] == "plan":
+                data["tasks"].append({"role": "news-analyst", "question": "독립 뉴스 확인", "input_ids": []})
+            if payload["stage"] == "reassess":
+                data["acceptances"] = []
+        result, events, provider = self.run_engine(Scripted(edit), max_calls=4)
+        self.assertEqual(result["status"], "budget_exhausted")
+        self.assertEqual(result["usage"]["calls"], 4)
+        self.assertEqual(len(provider.seen), 4)
+        self.assertTrue(all(artifact["state"] == "pending" for artifact in result["artifacts"]))
+        self.assertFalse(any("acceptance_reference_feedback" in call["payload"] for call in provider.seen))
+        warning = next(event for event in events if event["type"] == "acceptance_reference_error")
+        self.assertEqual(warning["status"], "budget_exhausted")
+
+    def test_acceptance_correction_cannot_overrule_independent_revise_or_block(self):
+        for verdict in ("revise", "blocked"):
+            def edit(payload, data):
+                if payload["stage"] == "specialist" and payload["role"] == "judgment-reviewer":
+                    data["review_verdict"] = verdict
+                if (payload["stage"] == "reassess" and payload["pending"][0]["role"] == "judgment-reviewer"
+                        and "acceptance_reference_feedback" not in payload):
+                    data["acceptances"].append({"artifact_id": "fundamental-analyst-v1", "state": "accepted", "reason": "cumulative row"})
+            with self.subTest(verdict=verdict):
+                result, _, provider = self.run_engine(Scripted(edit))
+                self.assertEqual(result["status"], "blocked")
+                self.assertEqual(result["usage"]["calls"], 6)
+                self.assertEqual(result["artifacts"][-1]["state"], verdict)
+                self.assertFalse(result["reviews"]["judgment-reviewer"])
+                self.assertEqual(len([call for call in provider.seen if "acceptance_reference_feedback" in call["payload"]]), 1)
+
+    def test_non_reference_schema_error_is_not_retried(self):
+        def edit(payload, data):
+            if payload["stage"] == "reassess":
+                data["acceptances"][0]["state"] = "approved"
+        result, events, _ = self.run_engine(Scripted(edit))
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["usage"]["calls"], 3)
+        self.assertEqual(result["artifacts"][0]["state"], "pending")
+        self.assertFalse(any(event["type"] == "acceptance_reference_error" for event in events))
 
     def test_revision_reuses_owner_and_invalidates_old_review(self):
         def edit(payload, data):
@@ -192,7 +463,8 @@ class EngineTests(unittest.TestCase):
                 data['tasks'].append({'role':'judgment-reviewer','question':'독립 검토','input_ids':[]})
         result, _, provider=self.run_engine(Scripted(edit))
         self.assertEqual(result['status'],'blocked')
-        self.assertEqual(len(provider.seen),1)
+        self.assertEqual(len(provider.seen),2)
+        self.assertEqual(result['artifacts'],[])
         self.assertFalse(result['report_complete'])
         self.assertLess(result['progress']['percent'],100)
 

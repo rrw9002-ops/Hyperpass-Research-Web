@@ -77,6 +77,26 @@
     if(!provider || !model)return;
     try{const data=await api(`/api/ai/${encodeURIComponent(provider)}/reasoning?model=${encodeURIComponent(model)}`);if(revision===reasoningRequest)fillReasoning($("run-reasoning"),data.options || [],prior);}catch{ /* The catalog/default remains valid; custom unsupported effort is never invented. */ }
   }
+  let verifiedPresetBusy=false;
+  function renderVerifiedPreset() {
+    $("verified-model-preset").disabled=verifiedPresetBusy || !aiInfo("openai")?.connected;
+  }
+  async function applyVerifiedPreset() {
+    if(verifiedPresetBusy || !aiInfo("openai")?.connected)return;
+    const selection=()=>[$("run-provider").value,$("run-model").value,$("run-reasoning").value].join("\n");
+    const prior=selection(),revision=++reasoningRequest;
+    verifiedPresetBusy=true;renderVerifiedPreset();$("verified-model-feedback").textContent="추론 설정을 확인하고 있습니다…";
+    try {
+      const data=await api("/api/ai/openai/reasoning?model=gpt-5.4");
+      if(!aiInfo("openai")?.connected || revision!==reasoningRequest || selection()!==prior){$("verified-model-feedback").textContent="선택 또는 연결이 바뀌어 적용하지 않았습니다. 현재 설정을 유지합니다.";return;}
+      if(!(data.options || []).some(o=>(o.id || o.value || o)==="medium"))throw new Error("이 앱에서 medium 설정을 확인하지 못했습니다. 기존 설정을 유지합니다.");
+      $("run-provider").value="openai";$("run-model").value="gpt-5.4";
+      modelList("openai","run-model-list");fillReasoning($("run-reasoning"),data.options,"medium");renderModelCapability();
+      const overrides=Object.keys(state.roleOverrides).length;
+      $("verified-model-feedback").textContent=`다음 질문의 기본 설정에 GPT-5.4 / medium을 적용했습니다.${overrides?` 역할별 별도 설정 ${overrides}개는 그대로 유지합니다.`:""} 리서치 시작을 눌러야 분석이 실행됩니다.`;
+    }catch(e){$("verified-model-feedback").textContent=e.message;}
+    finally{verifiedPresetBusy=false;renderVerifiedPreset();}
+  }
   function renderRoleAssignments() {
     const target = $("role-model-assignments"); target.replaceChildren();
     const roles = [{id:"head-manager",name:"Head Manager"},...(state.roles.length ? state.roles : DEFAULT_ROLES)];
@@ -99,6 +119,7 @@
     }
   }
   function renderModelCapability() {
+    renderVerifiedPreset();
     const p=aiInfo($("run-provider").value);
     const caps=p?.capabilities || {};
     const supports = typeof caps === "object" ? (caps.web_search ?? caps.native_web_search ?? caps.search) : undefined;
@@ -387,6 +408,7 @@
   $("connect-provider").addEventListener("change",()=>{$("api-key").value="";$("connect-error").textContent="";renderConnectProvider(true);});
   $("run-provider").addEventListener("change",()=>{$("run-model").value=defaultModel(aiInfo($("run-provider").value));modelList($("run-provider").value,"run-model-list");renderModelCapability();refreshReasoning();});
   $("run-model").addEventListener("change",refreshReasoning);
+  $("verified-model-preset").addEventListener("click",applyVerifiedPreset);
   $("refresh-models").addEventListener("click",async()=>{
     const id=$("connect-provider").value,key=$("api-key").value.trim();
     if(!key && !aiInfo(id)?.connected){$("connect-error").textContent="먼저 선택한 AI의 API 키를 입력해 주세요. 키는 모델 목록 조회에만 사용하며 아직 연결 등록하지 않습니다.";return;}

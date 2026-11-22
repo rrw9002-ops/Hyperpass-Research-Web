@@ -1,4 +1,4 @@
-# Hyperpass Research Web · v0.4.0-preview
+# Hyperpass Research Web · v0.4.1-preview
 
 질문을 입력하면 **Head Manager가 필요한 전문 에이전트를 구성하고, 근거를 검수하고,
 보완과 독립 검토를 거쳐 보고서를 남기는 로컬 웹앱**입니다. 브라우저에서 사용하며
@@ -17,26 +17,33 @@ Codex 앱·MCP·증권사 인증을 요구하지 않습니다. 매매·계좌 �
 
 ## 처음 실행
 
-1. [GitHub Releases](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases)에 게시된
-   본인 OS용 ZIP을 받습니다. 아직 해당 파일이 없다면 아래 소스 실행 방법을 사용합니다.
+수강생은 [빠른 시작 안내](docs/QUICKSTART.md)를 순서대로 따라 하세요.
+
+1. [v0.4.1 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.4.1-preview)에 게시된
+   본인 OS용 ZIP을 받습니다.
    소스 ZIP은 [공개 저장소](https://github.com/rrw9002-ops/Hyperpass-Research-Web)의 **Code → Download ZIP**입니다.
 2. ZIP을 **새 폴더에 압축 해제**합니다. 압축 파일 안에서 바로 실행하지 않습니다.
 3. 아래 표의 시작 파일을 실행하고, 실행 창을 열어 둔 채 브라우저를 사용합니다.
 4. 처음에는 **화면 체험 →**으로 키 없이 화면과 보고서 저장 흐름을 확인합니다.
 5. 실제 분석을 하려면 **API 연결하기**에서 사용할 AI 제공자 하나를 연결한 뒤
    질문을 입력하고 **리서치 시작**을 누릅니다. 모든 데이터 제공자를 등록할 필요는 없습니다.
+   OpenAI에서는 **검증 설정 적용 · GPT-5.4 / medium** 버튼으로 실제 완주를 확인한
+   설정을 선택할 수 있습니다. 버튼 자체는 분석을 시작하거나 API 비용을 발생시키지 않습니다.
 
 | 환경 | 실행 방법 |
 | --- | --- |
 | Windows 실행 파일 배포본 | ZIP 안의 `Hyperpass-Research-Web.exe`를 더블클릭합니다. Python 설치가 필요 없습니다. `Start-Windows.cmd`도 같은 EXE를 실행합니다. |
-| Mac 실행 파일 배포본 · 게시된 경우 | Apple Silicon(M 시리즈)은 `macOS-arm64`, Intel은 `macOS-x86_64` ZIP을 선택하고 `Start-Mac.command`를 엽니다. 포함된 실행 파일을 사용하므로 Python 설치가 필요 없습니다. |
+| Mac 실행 파일 배포본 | Apple Silicon(M 시리즈)은 `macOS-arm64`, Intel은 `macOS-x86_64` ZIP을 선택하고 `Start-Mac.command`를 엽니다. 포함된 실행 파일을 사용하므로 Python 설치가 필요 없습니다. |
 | Windows 소스 배포본 | Python 3.11 이상을 설치한 뒤 `Start-Windows.cmd`를 엽니다. |
 | Mac 소스 배포본 | Python 3.11 이상을 설치한 뒤 `Start-Mac.command`를 엽니다. 실행 권한 때문에 열리지 않으면 아래 수동 실행을 사용합니다. |
 
-이 버전은 사전 검증용입니다. Windows 소스·단독 EXE·ZIP 설치 점검은 통과했지만,
-Mac 네이티브 빌드·실행 CI는 아직 실행 전입니다. Mac 실행 파일은 Apple 개발자
-서명·공증을 제공하지 않으며 다운로드 후 Gatekeeper 동작도 미검증입니다.
-실제 AI의 전체 분석 완료는 API 키를 연결한 추가 확인이 필요합니다.
+이 버전은 사전 검증용입니다. Windows x64·Mac Apple Silicon·Mac Intel을 각각
+네이티브 빌드하고 소스·단독 실행 파일·ZIP 설치를 검사하는 CI를 사용합니다.
+게시된 파일의 동일 커밋 통과 기록은 릴리스에 첨부한 검증 JSON에서 확인하세요.
+실제 사용자 Mac의 GUI 실행, 다운로드 후 Gatekeeper 동작과 Mac TradingView 연동은 미검증입니다.
+Mac 실행 파일은 Apple 개발자 서명·공증을 제공하지 않습니다.
+실제 AI는 `gpt-5.4`·추론 `medium`로 기술 분석 → 근거 채택 → 독립 검토 → 최종 보고서 완료를 확인했습니다.
+다른 모델·계정의 성공을 같은 결과로 보지 않습니다. 새 배포 파일의 CI 결과와 SHA-256은 릴리스의 검증 JSON을 확인하세요.
 
 소스 배포본은 **Python 3.11 이상**이 한 번 설치되어 있어야 합니다.
 [공식 Python 설치 파일](https://www.python.org/downloads/)을 사용하세요.
@@ -284,10 +291,12 @@ API 오류가 나면 웹앱에서 연결을 다시 확인하세요. 인증 실�
 
 ## 배포와 검증
 
-2026-11-22 최종 Windows 소스는 단위 검사 173개 중 172개 통과·권한 관련 1개 생략이며
-실패가 없습니다. Python 3.14.3·PyInstaller 6.22.3으로 최신 EXE를 빌드하고,
-소스 설치·단독 EXE·Windows ZIP 압축 해제본에서 각각 9개 HTTP 설치 점검을 통과했습니다.
-단독 EXE는 외부 `team/`이 없는 폴더에서 기본 문서 33개를 생성했습니다.
+2026-11-22 [GitHub Actions 실행 `45009985262`](https://github.com/rrw9002-ops/Hyperpass-Research-Web/actions/runs/45009985262)의
+검증 커밋은 `6e7c0f7`입니다. Windows x64, macOS arm64, macOS x86_64 각각에서 Python 3.11.9로
+단위 검사 **175개 모두 통과**했고, 네이티브 빌드와 소스·단독 실행 파일·압축 해제 ZIP의
+**각 9개 HTTP 설치 점검**도 통과했습니다. 단독 실행 파일은 외부 `team/`이 없는 폴더에서
+기본 문서 33개를 생성했습니다. 해당 CI 아티팩트의 기록 버전은 `v0.4.0-preview`이며,
+현재 문서·배포 표기는 `v0.4.1-preview`입니다. 각 배포 파일의 커밋과 검증 기록을 함께 확인하세요.
 이 설치 점검은 고정 데모·합성 CSV·로컬 모의 TradingView 실패 응답을 사용합니다.
 
 이 README의 존재나 화면 체험 성공은 실제 API 분석 성공을 뜻하지 않습니다.
@@ -296,9 +305,9 @@ Windows EXE 실행·샘플 보고서 저장, Yahoo/TradingView 스크리너, KIS
 Manager의 실제 요청 1회도 성공했습니다. 그 실행은 이후 팀 계획 처리 오류로 중단되어
 최종 보고서가 없었습니다. 해당 오류는 수정하고 회귀 검사를 통과했으며, 수정 후 실제
 모델로 전체 보고서가 완성되는지는 추가 확인이 필요합니다. Claude·Gemini는 모의 응답
-프로토콜 검사를 통과했지만 실제 유료 호출은 미검증입니다. OpenBB 서버와
-Mac 실행도 별도 검증 항목입니다. v0.4의 Windows 패키지는 소스 검증과 구분해
-해당 릴리스의 검증 기록을 확인하세요.
+프로토콜 검사를 통과했지만 실제 유료 호출은 미검증입니다. OpenBB 서버, 실제 사용자 Mac의
+GUI·Gatekeeper·서명·공증 경로, Mac TradingView 연동은 별도 검증 항목입니다.
+Mac 네이티브 CI 설치 점검은 이 사용자 환경 검증을 대신하지 않습니다.
 차트 연구실의 계산 검사는 모의 OHLCV와 실제 Yahoo AAPL·하이닉스 이력으로
 수행했습니다. 별도로 Windows TradingView Desktop에서 새 Pine 전략 컴파일·실제
 41거래 보고서 수집·SMA20/RSI14 추가·반복 실행·컴파일 실패 처리를 확인했으며,
