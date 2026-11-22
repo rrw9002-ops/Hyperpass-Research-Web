@@ -171,28 +171,38 @@
     $("progress-calls").textContent=calls!==undefined?`모델 호출 ${calls}${cap?` / 상한 ${cap}`:""}회`:"";
   }
   function renderRoles(run = null) {
-    const last = new Map();
+    const working = new Set();
+    const outcomes = new Map();
+    const underway = !!isActive(run);
     for (const event of run?.events || []) {
       const role = event.role || event.agent;
-      if (role) last.set(role, event.status || (event.type === "artifact" ? "completed" : event.type === "error" ? "error" : "running"));
+      if (event.type === "agent_started") working.add(role);
+      if (["agent_completed", "agent_failed", "agent_cancelled"].includes(event.type)) {
+        working.delete(role);
+        outcomes.set(role, event.status);
+      }
+      if (event.type === "acceptance" || event.type === "artifact") outcomes.set(role, event.status);
     }
-    for (const artifact of run?.artifacts || []) if (artifact.role && !last.has(artifact.role)) last.set(artifact.role, artifact.status || "completed");
+    for (const artifact of run?.artifacts || []) {
+      if (!outcomes.has(artifact.role)) outcomes.set(artifact.role, artifact.state || artifact.status);
+    }
     const grid = $("role-grid"); grid.replaceChildren();
     (state.roles.length ? state.roles : DEFAULT_ROLES).forEach((role, index) => {
-      const status = last.get(role.id) || "idle";
-      const done = ["completed", "complete", "accepted"].includes(status);
+      const active = underway && working.has(role.id);
+      const status = active ? "started" : outcomes.get(role.id) || "idle";
       const failed = ["failed", "error", "blocked"].includes(status);
-      const active = last.has(role.id) && !done && !failed && isActive(run);
-      const card = el("div", `role-card${done ? " complete" : active ? " active" : failed ? " failed" : ""}`);
+      const card = el("div", `role-card${active ? " active" : status === "accepted" ? " complete" : failed ? " failed" : ""}`);
+      card.dataset.role = role.id;
       card.append(el("span", "role-number", String(index + 1).padStart(2, "0")));
       const copy = el("div", "role-text"); copy.append(el("strong", "", role.name), el("small", "", role.description));
       const roleArtifact=[...(run?.artifacts || [])].reverse().find(a=>a.role===role.id);const assignment=run?.model_config?.roles?.[role.id] || run?.model_config?.default;
       if(roleArtifact?.model || assignment?.model)copy.append(el("small","role-model-label",run.mode==="demo"?"고정 샘플":`${AI_NAMES[roleArtifact?.provider || assignment?.provider] || roleArtifact?.provider || assignment?.provider || ""} · ${roleArtifact?.model || assignment?.model}`));
       card.append(copy);
-      card.append(el("span", "role-state", friendlyStatus(status))); grid.append(card);
+      card.append(el("span", "role-state", status === "pending" ? "검수 대기" : friendlyStatus(status))); grid.append(card);
     });
-    $("head-card").classList.toggle("active", !!isActive(run));
-    $("head-status").textContent = run ? friendlyStatus(run.status) : "준비";
+    const headActive = underway && working.has("head-manager");
+    $("head-card").classList.toggle("active", headActive);
+    $("head-status").textContent = headActive ? "작업 중" : underway ? "대기" : run ? friendlyStatus(run.status) : "준비";
   }
   function renderHistory() {
     const history = $("history"); history.replaceChildren(); $("history-count").textContent = state.runs.length;
@@ -378,10 +388,30 @@
     const target=$('target-role')?.value;const note=$('target-role-note');
     if(note)note.textContent=target?'선택한 에이전트가 분석합니다. Head 검수와 필요한 독립 검토는 유지됩니다.':'Head Manager가 질문에 필요한 최소 팀을 구성합니다.';
   }
+  function beginChartQuestion(symbol, question, chart, tvJob) {
+    if (isActive(state.run)) { error("진행 중인 분석이 끝난 뒤 차트 결과를 연결하세요."); return; }
+    newRun();
+    state.chart = chart;
+    state.tvJob = tvJob;
+    $("symbol").value = symbol || "";
+    $("evidence").value = "";
+    $("memory").value = "";
+    for (const input of document.querySelectorAll("#provider-options input:checked")) input.checked = false;
+    renderProviderOptions();
+    $("web-search").checked = false;
+    $("target-role").value = "technical-analyst";
+    targetHint();
+    renderChartAttachment();
+    $("question").value = question;
+    $("question").focus();
+  }
   window.HyperpassApp={api,selectWorkspace,openRun:selectRun,
-    useTradingView:(id,result)=>{if(isActive(state.run)){error('진행 중인 분석이 끝난 뒤 연결하세요.');return;}newRun();const symbol=result.chart?.symbol||'TradingView';state.tvJob={id,symbol};$('target-role').value='technical-analyst';targetHint();$('question').value=`${symbol}의 실제 TradingView 백테스트 결과를 기술 분석해줘. 전략 규칙, 거래 횟수, 비용과 낙폭, 데이터 범위와 과최적화 가능성을 구분하고 추가 검증이 필요한 점을 정리해줘.`;$('web-search').checked=false;renderChartAttachment();$('question').focus();},
+    useTradingView:(id,result)=>{
+      const symbol=result.chart?.symbol || "";
+      beginChartQuestion(symbol,`${symbol || "TradingView"}의 실제 TradingView 백테스트 결과를 기술 분석해줘. 전략 규칙, 거래 횟수, 비용과 낙폭, 데이터 범위와 과최적화 가능성을 구분하고 추가 검증이 필요한 점을 정리해줘.`,null,{id,symbol:symbol || "TradingView"});
+    },
     openChart:async id=>{selectWorkspace('chart');await window.HyperpassChart?.open(id);},
-    useChart:chart=>{if(isActive(state.run)){error('진행 중인 분석이 끝난 뒤 차트 결과를 연결하세요.');return;}newRun();state.chart=chart;$('target-role').value='technical-analyst';targetHint();$('question').value=`${chart.symbol}의 저장된 차트·백테스트를 기술 분석해줘. 지표와 진입·청산 규칙, 비용, 미실현 손익, 표본 밖 검증 결과와 데이터 한계를 구분하고 과최적화 가능성을 검토해줘. 수익 보장이나 매매 지시는 하지 마.`;$('web-search').checked=false;renderChartAttachment();$('question').focus();},
+    useChart:chart=>beginChartQuestion(chart.symbol,`${chart.symbol}의 저장된 차트·백테스트를 기술 분석해줘. 지표와 진입·청산 규칙, 비용, 미실현 손익, 표본 밖 검증 결과와 데이터 한계를 구분하고 과최적화 가능성을 검토해줘. 수익 보장이나 매매 지시는 하지 마.`,chart,null),
     useMemory:async id=>{if(isActive(state.run)){error('분석 완료 후 이전 기록을 연결하세요.');return;}const run=await api('/api/runs/'+encodeURIComponent(id));if(run.mode==='demo'||run.status!=='completed'){error('완료된 실제 연구만 이전 판단으로 연결할 수 있습니다.');return;}selectWorkspace('research');$('memory').value=`이전 연구 ${run.id} (${run.created_at})\n${run.question}\n${run.report}`.slice(0,10000);$('memory').closest('details').open=true;$('form-feedback').textContent='이전 연구를 참고할 기억으로 연결했습니다. 현재 자료와 구분해 검토합니다.';}
   };
   for(const button of document.querySelectorAll('[data-workspace]'))button.addEventListener('click',()=>selectWorkspace(button.dataset.workspace));

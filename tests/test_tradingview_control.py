@@ -48,6 +48,43 @@ def snapshot(new=True, errors=None):
 
 
 class ControlTests(unittest.TestCase):
+    def test_chart_switch_after_configure_stops_before_strategy_editor(self):
+        session=Session()
+        with patch.object(tv,"_select",return_value=(TARGET,[TARGET])), \
+             patch.object(tv,"_Session",return_value=session), self.assertRaises(tv.ChartControlError):
+            tv.run_strategy(code=CODE,expected_chart={**CHART,"symbol":"NASDAQ:MSFT"})
+        self.assertEqual([a for a,_ in session.calls],["status"])
+
+    def test_indicator_needs_new_matching_study_with_healthy_runtime(self):
+        source = '//@version=6\nindicator(shorttitle="PH", title="Pivot highs", overlay=true)\nplot(high)'
+        study = {"study_id":"new","title":"Pivot highs","runtime_status":{"type":2}}
+        scenarios = [
+            (["new"],study,"applied"),
+            ([],study,"unverified_indicator"),
+            (["new"],dict(study,title="Other"),"unverified_indicator"),
+            (["new"],dict(study,runtime_status={"type":1}),"unverified_indicator"),
+            (["new","other"],study,"unverified_indicator"),
+            (["new"],dict(study,runtime_status={"type":3}),"compile_error"),
+        ]
+        for new_ids, observed, expected in scenarios:
+            with self.subTest(ids=new_ids, observed=observed):
+                state={"source_matches":True,"chart":CHART,"new_ids":new_ids,"errors":[],"indicators":[observed]}
+                session=Session([state])
+                with patch.object(tv,"_select",return_value=(TARGET,[TARGET])), \
+                     patch.object(tv,"_Session",return_value=session), \
+                     patch.object(tv.time,"sleep"), patch.object(tv.time,"monotonic",side_effect=Clock().now):
+                    result=tv.run_indicator(code=source,timeout=5,expected_chart=CHART)
+                self.assertEqual(result["status"],expected)
+                self.assertNotIn("open_tester",[action for action,_ in session.calls])
+                self.assertEqual(next(p["kind"] for a,p in session.calls if a=="new_script"),"indicator")
+
+    def test_indicator_declaration_cannot_be_spoofed_by_text_or_comments(self):
+        for code in ['// indicator("x")\nstrategy("x")', 'library("x")\nplot("indicator(x)")',
+                     'indicator("one")\nstrategy("two")', 'indicator("one" + "two")']:
+            with self.subTest(code=code), self.assertRaises(ValueError):
+                tv.indicator_title(code)
+        self.assertEqual(tv.indicator_title('indicator("한글 지표", overlay=true) // strategy("fake")'), "한글 지표")
+
     def run_fixture(self, session, callback=None):
         with ExitStack() as stack:
             stack.enter_context(patch.object(tv, "_select", return_value=(TARGET, [TARGET])))

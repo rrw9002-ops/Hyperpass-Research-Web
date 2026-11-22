@@ -156,6 +156,9 @@ class Application:
         editable_root=Path(sys.executable).parent if getattr(sys,'frozen',False) else self.root
         self.team=TeamConfig(team_dir or editable_root/'team',self.root)
         self.tv_jobs=TradingViewJobs(self.store)
+        from .indicator_studio import IndicatorStudio
+        self.indicators = IndicatorStudio(self.store)
+        self.indicator_generation = threading.Lock()
         self.lock = threading.RLock()
         self.provider = None
         self.ai_providers = {}
@@ -176,6 +179,25 @@ class Application:
                      'capabilities':{'web_search':'모델의 검색 지원·계정 권한에 따라 달라집니다.',
                                      'reasoning':'선택한 모델이 지원하는 강도만 설정합니다.'}}
                     for name,label in AI_NAMES.items()]
+
+    def indicator_draft(self, payload):
+        from .indicator_studio import generate_indicator
+        vendor = payload.get('provider')
+        if not isinstance(vendor, str) or vendor not in AI_NAMES:
+            raise ValueError('지표 코드를 생성할 AI를 선택하세요.')
+        with self.lock:
+            registry = dict(self.ai_providers)
+            if vendor not in registry:
+                raise ValueError('선택한 AI의 API 키를 먼저 연결하세요.')
+            config = {'provider': vendor, 'model': payload.get('model') or registry[vendor].model,
+                      'reasoning': payload.get('reasoning', 'default')}
+            provider = RoutedProvider({'default': config, 'roles': {}}, registry)
+        if not self.indicator_generation.acquire(blocking=False):
+            raise ValueError('이미 지표 코드를 생성 중입니다. 완료될 때까지 기다려 주세요.')
+        try:
+            return generate_indicator(provider, payload.get('prompt'))
+        finally:
+            self.indicator_generation.release()
 
     def model_list(self, name, key=None):
         if name not in AI_NAMES: raise ValueError('지원하지 않는 AI 제공사입니다.')
@@ -469,6 +491,15 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/sources': return self.send(200,{'sources':self.app.source_catalog()})
         if path=='/api/ai': return self.send(200,{'providers':self.app.ai_catalog()})
         if path=='/api/library': return self.send(200,self.app.library())
+        if path == '/api/indicators':
+            return self.send(200, {'indicators': self.app.indicators.list()})
+        if path == '/api/tradingview/symbols':
+            from .symbol_search import search_symbols
+            query = parse_qs(urlsplit(self.path).query).get('q', [''])[0]
+            try:
+                return self.send(200, search_symbols(query))
+            except ValueError as exc:
+                return self.send(400, {'error': str(exc)})
         if path in ('/api/team','/api/team/document','/api/tradingview/status'):
             try:
                 query=parse_qs(urlsplit(self.path).query)
@@ -523,6 +554,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200,report.encode('utf-8'),'text/markdown; charset=utf-8',True if complete else 'intermediate')
             return self.send(200,run)
         static={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
+        static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js'})
         if path in static and static[path]:
             file=self.app.root/'static'/static[path]
             if file.is_file(): return self.send(200,file.read_bytes(),(mimetypes.guess_type(str(file))[0] or 'application/octet-stream')+'; charset=utf-8')
@@ -539,6 +571,11 @@ class Handler(BaseHTTPRequestHandler):
             payload=json.loads(self.rfile.read(length))
             if not isinstance(payload,dict): raise ValueError('입력 형식 오류')
             path=urlsplit(self.path).path
+            if path == '/api/indicators':
+                record = self.app.indicators.save(payload)
+                return self.send(200 if payload.get('id') else 201, record)
+            if path == '/api/indicators/generate':
+                return self.send(200, self.app.indicator_draft(payload))
             if path=='/api/team/document':
                 from .team_config import TeamConfigConflict
                 try: return self.send(200,self.app.team.save_document(payload.get('path',''),payload.get('content'),payload.get('expected_revision')))

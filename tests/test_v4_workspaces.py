@@ -227,12 +227,13 @@ class V4WorkspaceHTTPTests(unittest.TestCase):
         for crashes in (False,True):
             with self.subTest(crashes=crashes):
                 def run_strategy(**kwargs):
+                    self.assertEqual(kwargs['expected_chart'],{'symbol':'TEST:FIXTURE','timeframe':'1D'})
                     kwargs['on_progress']({'stage':'source_backed_up','message':'Test backup recorded',
                                            'previous_source':'ORIGINAL-EDITOR-CODE-FIXTURE'})
                     if crashes: raise OSError('Synthetic compile transport failure')
                     return {'status':'compile_error','compile_errors':['Synthetic compiler error'],
                             'warnings':['Synthetic fixture only; not an actual Pine compilation.']}
-                with patch('hyperpass.tradingview_control.configure_chart',return_value={'status':'configured'}) as configure, \
+                with patch('hyperpass.tradingview_control.configure_chart',return_value={'status':'configured','chart':{'symbol':'TEST:FIXTURE','timeframe':'1D'}}) as configure, \
                      patch('hyperpass.tradingview_control.run_strategy',side_effect=run_strategy):
                     code,_,started=self.request('/api/tradingview/jobs',payload)
                     self.assertEqual(code,202,started)
@@ -265,7 +266,7 @@ class V4WorkspaceHTTPTests(unittest.TestCase):
     def test_saved_backtest_evidence_is_attached_without_client_forgery_or_editor_backup(self):
         result=strategy_fixture()
         result['previous_source']='PRIVATE-EDITOR-BACKUP-MUST-NOT-BECOME-EVIDENCE'
-        with patch('hyperpass.tradingview_control.configure_chart',return_value={'status':'configured'}), \
+        with patch('hyperpass.tradingview_control.configure_chart',return_value={'status':'configured','chart':{'symbol':'TEST:FIXTURE','timeframe':'1D'}}), \
              patch('hyperpass.tradingview_control.run_strategy',return_value=result):
             code,_,created=self.request('/api/tradingview/jobs',{'action':'backtest','port':9222,
                      'symbol':'TEST:FIXTURE','code':'strategy("Synthetic connector test")'})

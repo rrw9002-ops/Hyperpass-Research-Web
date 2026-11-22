@@ -6,6 +6,7 @@ import math
 import threading
 import uuid
 from .tradingview_chart import _port
+from .pine_indicator import indicator_title
 
 _STRATEGY_PROPERTIES_URL='https://www.tradingview.com/support/solutions/43000628599-strategy-properties/'
 _BROKER_EMULATOR_URL='https://www.tradingview.com/pine-script-docs/concepts/strategies/#broker-emulator'
@@ -211,7 +212,11 @@ class TradingViewJobs:
 
     def start(self,payload):
         action=payload.get('action')
-        if action not in ('configure','backtest'): raise ValueError('TradingView 작업을 선택하세요.')
+        if action not in ('configure','backtest','indicator'): raise ValueError('TradingView 작업을 선택하세요.')
+        if action=='indicator':
+            indicator_title(payload.get('code'))
+            if not payload.get('symbol') or not payload.get('timeframe'):
+                raise ValueError('개인 지표를 적용할 종목과 주기를 선택하세요.')
         _port(payload.get('port',9222))
         if action=='backtest' and (not isinstance(payload.get('code'),str) or not payload['code'].strip() or len(payload['code'].encode())>200000):
             raise ValueError('Pine 전략 코드를 입력하세요. 최대 200KB입니다.')
@@ -234,7 +239,7 @@ class TradingViewJobs:
                 job.update(status='running',stage=str(stage),message=str(message or stage))
                 self.put(job)
         try:
-            from .tradingview_control import configure_chart,run_strategy
+            from .tradingview_control import configure_chart,run_strategy,run_indicator
             request=job['request']
             port=request.get('port',9222)
             target=request.get('target_id') or None
@@ -242,15 +247,21 @@ class TradingViewJobs:
             if request['action']=='configure':
                 result=configure_chart(port=port,target_id=target,symbol=request.get('symbol'),timeframe=request.get('timeframe'),indicators=request.get('indicators'))
             else:
+                expected_chart=None
                 if request.get('symbol') or request.get('timeframe') or request.get('indicators'):
                     configured=configure_chart(port=port,target_id=target,symbol=request.get('symbol'),timeframe=request.get('timeframe'),indicators=request.get('indicators'))
                     job['configuration']=configured
                     if configured.get('status')!='configured':
-                        raise ValueError('요청한 차트 설정이 모두 확인되지 않아 전략 실행을 중단했습니다. 적용 상태를 확인하세요.')
-                result=run_strategy(port=port,target_id=target,code=request['code'],timeout=75,on_progress=progress)
-            failed=result.get('status') in ('compile_error','no_report','partial','failed')
+                        raise ValueError('요청한 차트 설정을 확인하지 못했습니다. 적용 상태를 확인하세요.')
+                    target=configured.get('target_id') or target
+                    expected_chart=configured['chart']
+                if request['action']=='indicator':
+                    result=run_indicator(port=port,target_id=target,code=request['code'],timeout=75,on_progress=progress,expected_chart=expected_chart)
+                else:
+                    result=run_strategy(port=port,target_id=target,code=request['code'],timeout=75,on_progress=progress,expected_chart=expected_chart)
+            failed=result.get('status') not in ('completed','configured','applied')
             job.update(status='failed' if failed else 'completed',stage='finished',result=result,
-                       message='TradingView 작업을 완료했습니다.' if not failed else 'TradingView 결과를 확인하세요. 성공한 백테스트로 처리하지 않았습니다.',
+                       message='TradingView 작업을 완료했습니다.' if not failed else 'TradingView에서 확인한 오류와 적용 상태를 확인하세요.',
                        error='컴파일 오류 또는 확인되지 않은 결과입니다. 상세 내용을 확인하세요.' if failed else None)
         except (ValueError,OSError) as exc:
             job.update(status='failed',stage='failed',error=str(exc),message='TradingView 작업이 중단됐습니다.')

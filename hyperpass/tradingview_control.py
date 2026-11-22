@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from .tradingview_chart import _port, _targets, _valid_ws, _WebSocket, TradingViewChartError
+from .pine_indicator import indicator_title
 
 
 class ChartControlError(ValueError):
@@ -139,9 +140,11 @@ _PROGRAM = r"""async function(action, p) {
     if(!item) return {error:'new_script_unavailable'};
     item.focus(); item.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',code:'ArrowRight',keyCode:39,which:39,bubbles:true}));
     await new Promise(r=>setTimeout(r,200));
-    const strategy=Array.from(document.querySelectorAll('[role="menuitem"]')).find(x=>/^(전략|Strategy)(Ctrl|⌘|\\s|$)/i.test(x.textContent.trim()));
-    if(!strategy || strategy.getAttribute('aria-disabled')==='true') return {error:'new_script_unavailable'};
-    strategy.click();
+    const indicator = p.kind === 'indicator';
+    const menuLabel = indicator ? /^(지표|인디케이터|Indicator)(Ctrl|⌘|\s|$)/i : /^(전략|Strategy)(Ctrl|⌘|\s|$)/i;
+    const scriptType = Array.from(document.querySelectorAll('[role="menuitem"]')).find(x=>menuLabel.test(x.textContent.trim()));
+    if(!scriptType || scriptType.getAttribute('aria-disabled')==='true') return {error:'new_script_unavailable'};
+    scriptType.click();
     for(let i=0;i<30;i++) {
       await new Promise(r=>setTimeout(r,200));
       const confirmation=saveDialog();
@@ -156,7 +159,8 @@ _PROGRAM = r"""async function(action, p) {
       const label=add?.textContent?.trim() || add?.getAttribute('title') || '';
       // TradingView reuses Monaco's model URI across documents. The new-document
       // menu plus an enabled Add (never Update) action is the observable boundary.
-      if(fresh && /^\s*strategy\s*\(/m.test(fresh.e.getValue()) && add && !add.disabled && /^(Add to chart|차트에 추가|차트에 넣기)$/i.test(label)) return {created:true,uri:String(fresh.e.getModel()?.uri)};
+      const declaration = indicator ? /^\s*indicator\s*\(/m : /^\s*strategy\s*\(/m;
+      if(fresh && declaration.test(fresh.e.getValue()) && add && !add.disabled && /^(Add to chart|차트에 추가|차트에 넣기)$/i.test(label)) return {created:true,uri:String(fresh.e.getModel()?.uri)};
     }
     return {created:false};
   }
@@ -164,7 +168,8 @@ _PROGRAM = r"""async function(action, p) {
     const m=editor(); if(!m) return {error:'editor_unavailable'};
     const previous=m.e.getValue(); if(previous.length>200000) return {error:'backup_too_large'};
     const refs={}; for(const s of strategies()) {const rd=reportOf(s);refs[s.id()]={ref:rd,signature:JSON.stringify(rd?.performance || null)};}
-    window.__hyperpassResearchRun={token:p.token,refs,source:p.code,started:Date.now()};
+    const beforeStudies=p.kind==='indicator' ? chart.getAllStudies().map(s=>s.id) : [];
+    window.__hyperpassResearchRun={token:p.token,refs,beforeStudies,kind:p.kind,source:p.code,started:Date.now()};
     m.e.setValue(p.code); m.e.focus();
     return {previous_source:previous,source_matches:m.e.getValue()===p.code,before_ids:Object.keys(refs)};
   }
@@ -184,6 +189,17 @@ _PROGRAM = r"""async function(action, p) {
   if(action==='reports') return {chart:state(),reports:reports()};
   if(action==='run_state') {
     const run=window.__hyperpassResearchRun, m=editor(); if(!run || run.token!==p.token) return {error:'run_replaced'};
+    if(run.kind==='indicator') {
+      const chartState=state();
+      const newIds=chartState.studies.map(s=>s.id).filter(id=>!run.beforeStudies.includes(id));
+      const indicators=sources().flatMap(s=>{
+        if(!newIds.includes(s.id?.())) return [];
+        const meta=s.metaInfo?.();
+        if(!meta?.isTVScript || meta.isTVScriptStrategy || meta.is_strategy) return [];
+        return [{study_id:s.id(),title:meta.description,runtime_status:safe(s.status?.())}];
+      });
+      return {chart:chartState,new_ids:newIds,indicators,source_matches:!!m && m.e.getValue()===run.source,errors:m?errors(m):[]};
+    }
     const changed=[]; for(const s of strategies()) {const rd=reportOf(s), old=run.refs[s.id()];if(!old || (rd && (rd!==old.ref || JSON.stringify(rd.performance || null)!==old.signature))) changed.push(s.id());}
     return {chart:state(),reports:reports(),changed_ids:changed,new_ids:strategies().map(s=>s.id()).filter(id=>!Object.prototype.hasOwnProperty.call(run.refs,id)),source_matches:!!m && m.e.getValue()===run.source,errors:m?errors(m):[]};
   }
@@ -282,7 +298,7 @@ def _check(value):
     if value.get("error"):
         messages = {"chart_unavailable": "현재 탭의 TradingView 차트가 아직 준비되지 않았습니다.",
                     "editor_unavailable": "Pine 편집기를 열지 못했습니다. TradingView 앱에서 Pine 편집기를 확인하세요.",
-                    "new_script_unavailable": "새 Pine 전략 문서를 만들지 못했습니다. TradingView 편집기의 새로 만들기 → 전략 메뉴를 확인하세요.",
+                    "new_script_unavailable": "새 Pine 문서를 만들지 못했습니다. TradingView 편집기의 새로 만들기 메뉴를 확인하세요.",
                     "source_changed_before_new_script": "백업 후 Pine 원문이 바뀌어 새 문서로 전환하지 않았습니다. 편집 내용을 확인하고 다시 실행하세요.",
                     "backup_too_large": "기존 Pine 코드가 백업 한도를 초과하여 편집하지 않았습니다.",
                     "run_replaced": "다른 실행이 현재 Pine 작업을 변경했습니다.",
@@ -351,6 +367,13 @@ def _same_timeframe(a, b):
     return re.sub(r"^1([SDWM])$", r"\1", str(a)) == re.sub(r"^1([SDWM])$", r"\1", str(b))
 
 
+def _same_chart_symbol(observed, requested):
+    observed = str(observed).upper()
+    return observed == requested or (
+        requested.startswith("KRX:") and observed == "KRX_DLY:" + requested.split(":", 1)[1]
+    )
+
+
 def configure_chart(port=9222, symbol=None, timeframe=None, indicators=None, target_id=None):
     """Change only requested chart fields/add studies. Never remove a study."""
     symbol, timeframe, indicators = _validate_config(symbol, timeframe, indicators)
@@ -369,7 +392,7 @@ def configure_chart(port=9222, symbol=None, timeframe=None, indicators=None, tar
                     _check(session.call("configure", {key: value}))
                     for _ in range(24):
                         observed = _check(session.call("status"))["chart"].get(key)
-                        if (str(observed).upper() == value if key == "symbol" else _same_timeframe(observed, value)):
+                        if (_same_chart_symbol(observed, value) if key == "symbol" else _same_timeframe(observed, value)):
                             changed.append({"field": key, "value": observed})
                             break
                         time.sleep(.25)
@@ -397,6 +420,9 @@ def configure_chart(port=9222, symbol=None, timeframe=None, indicators=None, tar
             except ChartControlError as exc:
                 warnings.append(str(exc))
             current = _check(session.call("status"))["chart"]
+            if ((symbol is not None and not _same_chart_symbol(current.get("symbol"),symbol)) or
+                (timeframe is not None and not _same_timeframe(current.get("timeframe"),timeframe))):
+                warnings.append("설정을 적용하는 동안 차트 종목 또는 주기가 바뀌었습니다. 차트에서 다시 확인하세요.")
         return {"status": "partial" if warnings else "configured", "target_id": target["id"], "before": before,
                 "chart": current, "changed": changed, "warnings": warnings, "retrieved_at": _now()}
     finally:
@@ -424,14 +450,18 @@ def _validate_code(code):
     return code
 
 
-def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=None):
-    """Apply Pine as editor data and verify a NEW study's real report.
+def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=None, expected_chart=None):
+    return _run_pine(port, _validate_code(code), target_id, timeout, on_progress, expected_chart=expected_chart)
 
-    Existing script updates/saves are deliberately not clicked: students' original
-    studies are preserved. A missing Add button returns an actionable no_report.
-    Every result after editor replacement carries previous_source for persistence.
-    """
-    code = _validate_code(code)
+
+def run_indicator(port=9222, code="", target_id=None, timeout=60, on_progress=None, expected_chart=None):
+    return _run_pine(port, code, target_id, timeout, on_progress, indicator_title(code), expected_chart)
+
+
+def _run_pine(port, code, target_id, timeout, on_progress, title=None, expected_chart=None):
+    """Add a fresh script, preserve the editor backup, and require chart-side readback."""
+    kind = "indicator" if title is not None else "strategy"
+    label = "지표" if title is not None else "전략"
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout) or not 5 <= timeout <= 120:
         raise ChartControlError("실행 대기 시간은 5–120초여야 합니다.")
     target, _ = _select(port, target_id)
@@ -441,6 +471,8 @@ def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=Non
               "previous_source": None, "study_id": None, "chart": None, "warnings": [],
               "source_sha256": hashlib.sha256(code.encode()).hexdigest(), "started_at": _now(),
               "verification": "new_study_report_required"}
+    if title is not None:
+        result.update(status="unverified_indicator", verification="new_indicator_title_id_runtime_required")
 
     def progress(stage, message):
         if on_progress:
@@ -451,6 +483,9 @@ def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=Non
             result["chart"] = _check(session.call("status"))["chart"]
             expected_symbol = result["chart"].get("symbol")
             expected_timeframe = result["chart"].get("timeframe")
+            if expected_chart and (expected_symbol != expected_chart.get("symbol") or
+                                   not _same_timeframe(expected_timeframe, expected_chart.get("timeframe"))):
+                raise ChartControlError("차트 설정 확인 후 종목 또는 주기가 바뀌었습니다. 다시 요청하세요.")
             progress("opening_editor", "TradingView Pine 편집기를 준비하고 있습니다.")
             _check(session.call("open_editor"))
             editor_state, stable_state, stable_since = None, None, None
@@ -472,15 +507,15 @@ def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=Non
             result["previous_source"] = previous
             if on_progress:
                 on_progress({"stage": "backup", "message": "기존 Pine 편집기 코드를 백업했습니다.", "previous_source": previous})
-            progress("new_script", "기존 전략을 보존하고 새 Pine 전략 문서를 만들고 있습니다.")
-            fresh = _check(session.call("new_script", {"backed_up_source": previous}))
+            progress("new_script", f"새 Pine {label} 문서를 만들고 있습니다.")
+            fresh = _check(session.call("new_script", {"backed_up_source": previous, "kind": kind}))
             if not fresh.get("created"):
-                raise ChartControlError("새 전략 문서를 확인하지 못해 코드를 교체하지 않았습니다. TradingView 편집기를 확인하세요.")
+                raise ChartControlError(f"새 {label} 문서를 확인하지 못했습니다. TradingView 편집기를 확인하세요.")
             token = uuid.uuid4().hex
-            changed = _check(session.call("set_source", {"code": code, "token": token}))
+            changed = _check(session.call("set_source", {"code": code, "token": token, "kind": kind}))
             if not changed.get("source_matches"):
                 raise ChartControlError("Pine 편집기의 입력 코드가 요청과 일치하지 않습니다.")
-            progress("compiling", "입력한 Pine 전략을 TradingView 차트에 추가하고 있습니다.")
+            progress("compiling", f"입력한 Pine {label}를 TradingView 차트에 추가하고 있습니다.")
             clicked = {}
             for _ in range(12):
                 clicked = session.call("compile")
@@ -491,8 +526,11 @@ def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=Non
             if not clicked.get("triggered"):
                 result["warnings"].append("Pine 편집기에 코드와 원본 백업을 준비했습니다. 기존 전략을 보호하기 위해 업데이트/저장은 누르지 않았습니다. TradingView 편집기의 ‘차트에 추가’가 가능한 새 스크립트에서 다시 실행하세요.")
                 return result
-            _check(session.call("open_tester"))
-            progress("backtesting", "TradingView가 새 전략의 실제 백테스트 보고서를 계산하는지 확인하고 있습니다.")
+            if title is None:
+                _check(session.call("open_tester"))
+                progress("backtesting", "TradingView가 새 전략의 실제 백테스트 보고서를 계산하는지 확인하고 있습니다.")
+            else:
+                progress("verifying_indicator", "차트에서 새 지표의 이름과 계산 상태를 확인하고 있습니다.")
             deadline, error_since, last_errors = time.monotonic() + timeout, None, []
             while time.monotonic() < deadline:
                 snapshot = _check(session.call("run_state", {"token": token}))
@@ -509,6 +547,21 @@ def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=Non
                 for error in snapshot.get("errors", []):
                     if error.get("severity", 0) >= 8 and error not in current_errors:
                         current_errors.append(error)
+                if title is not None:
+                    new_ids = snapshot.get("new_ids", [])
+                    if len(new_ids) > 1:
+                        raise ChartControlError("동시에 여러 지표가 추가됐습니다. 차트에서 결과를 확인하세요.")
+                    for study in snapshot.get("indicators", []):
+                        if study.get("study_id") not in new_ids or study.get("title") != title:
+                            continue
+                        runtime = study.get("runtime_status") or {}
+                        if runtime.get("type") == 3:
+                            result.update(status="compile_error", compile_errors=current_errors or [runtime], indicator=study)
+                            return result
+                        if runtime.get("type") == 2 and not current_errors:
+                            result.update(status="applied", indicator=study, study_id=study["study_id"], completed_at=_now())
+                            progress("completed", "새 지표가 차트에서 계산되는 것을 확인했습니다.")
+                            return result
                 if len(matches) == 1 and not current_errors:
                     result.update(status="completed", report=matches[0], study_id=matches[0]["study_id"], completed_at=_now())
                     progress("completed", "TradingView의 새 전략 보고서를 확인했습니다.")
@@ -520,14 +573,14 @@ def run_strategy(port=9222, code="", target_id=None, timeout=60, on_progress=Non
                         error_since = time.monotonic()
                     elif error_since is not None and time.monotonic() - error_since >= 1:
                         result.update(status="compile_error", compile_errors=current_errors)
-                        result["warnings"].append("TradingView Pine 컴파일 오류로 보고서를 생성하지 못했습니다.")
+                        result["warnings"].append(f"TradingView Pine 컴파일 오류입니다. {label} 코드를 확인하세요.")
                         return result
                 else:
                     error_since = None
                 last_errors = current_errors
                 time.sleep(.5)
             result["compile_errors"] = last_errors
-            result["warnings"].append("대기 시간 안에 이번 코드의 새 전략 보고서를 확인하지 못했습니다. 기존 보고서를 이번 결과로 저장하지 않았습니다. TradingView 편집기 오류·전략 개수 제한·전략 테스터 상태를 확인하세요.")
+            result["warnings"].append("차트에서 새 지표의 이름과 계산 상태를 확인하지 못했습니다. 편집기 오류와 지표 한도를 확인하세요." if title is not None else "대기 시간 안에 이번 코드의 새 전략 보고서를 확인하지 못했습니다. 기존 보고서를 이번 결과로 저장하지 않았습니다. TradingView 편집기 오류·전략 개수 제한·전략 테스터 상태를 확인하세요.")
             return result
     except ChartControlError as exc:
         if result["previous_source"] is None:

@@ -169,9 +169,16 @@ def exercise(client, installation, record):
     client.csrf = status['csrf']
     require(status['connected'] is False, 'Fresh install must not have an AI key')
     require('Hyperpass' in client.request('/'), 'Main page failed to load')
-    for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'workspaces.css'):
+    for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css'):
         require(bool(client.request('/' + asset)), 'Missing UI asset: ' + asset)
     record('startup_and_assets', 'Fresh localhost app and all workspace assets loaded; no API key configured.')
+
+    indicator_code = '//@version=6\nindicator("Smoke average", overlay=true)\nplot(ta.sma(close, 20))'
+    saved_indicator = client.request('/api/indicators', {'name': '내 이동평균', 'code': indicator_code}, expected=201)
+    edited_indicator = dict(saved_indicator, name='50봉 평균', code=indicator_code.replace('20)', '50)'))
+    client.request('/api/indicators', edited_indicator)
+    require(client.request('/api/indicators')['indicators'] == [edited_indicator], 'Personal indicator edit was not saved')
+    record('personal_indicators', 'Created, edited and reopened a personal Pine indicator over the installed app API.')
 
     listed = client.request('/api/team')['documents']
     require({'team/' + item['path'] for item in listed} == TEAM_FILES, 'Expected exactly 33 fixed team documents')
@@ -250,7 +257,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.4.1-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.5.0-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

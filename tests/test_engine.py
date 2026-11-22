@@ -640,7 +640,9 @@ class EngineTests(unittest.TestCase):
             mode = "live"
             def complete(self, *args, **kwargs):
                 raise ProviderError("API 키 인증에 실패했습니다.")
-        result, _, _ = self.run_engine(FailedProvider())
+        result, events, _ = self.run_engine(FailedProvider())
+        lifecycle = [(e["type"], e["role"], e["call_number"]) for e in events if e["type"].startswith("agent_")]
+        self.assertEqual(lifecycle, [("agent_started", "head-manager", 1), ("agent_failed", "head-manager", 1)])
         self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["mode"], "live")
         self.assertNotIn("AI 분석 아님", result["report"])

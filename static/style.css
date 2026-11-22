@@ -17,3 +17,61 @@ dialog{border:1px solid #67573b;border-radius:14px;padding:26px;background:#1110
 
 .sources{display:flex;flex-direction:column;gap:6px;margin-top:14px}.sources>strong{font-size:10px}.sources>a{font-size:10px;color:#d6aa78;text-decoration:underline}
 .brain-record-entry{min-width:0}.brain-record-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 3px 3px}.brain-record-actions>span{font-size:8px;color:var(--muted)}.brain-record-actions>.text-button{font-size:10px;color:#e6af76;white-space:nowrap}.brain-record-actions>.text-button:hover{color:var(--accent)}
+
+.brain-canvas { cursor: zoom-in; }
+.brain-canvas.zoomed { cursor: grab; touch-action: none; }
+.orb-zoom-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: max-content;
+  margin: 0 auto;
+  padding: 2px;
+  border: 1px solid #655337;
+  border-radius: 18px;
+  background: #1b170ff2;
+}
+.orb-stage .orb-zoom-controls {
+  position: absolute;
+  z-index: 2;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.orb-zoom-controls button {
+  min-width: 30px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: #e6d5af;
+  font-size: 14px;
+}
+.orb-zoom-controls button:nth-child(2) { min-width: 48px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.orb-zoom-controls button:enabled:hover { background: #49341d; color: #fff0d5; }
+.orb-zoom-controls button:focus-visible { outline: 2px solid #f2bb7a; outline-offset: 1px; }
+.orb-zoom-controls button:disabled { opacity: .4; cursor: default; }
+.role-card.active, .head-card.active {
+  border-color: #ff9b51;
+  background: #332016;
+  box-shadow: inset 0 0 14px #ff873518, 0 0 12px #ff8a382b;
+}
+.role-card.active .role-state, .head-card.active .role-state {
+  width: max-content;
+  color: #ffe0bb;
+  border-color: #ab6635;
+  font-size: 9px;
+}
+.role-card.active .role-state::before, .head-card.active .role-state::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: #ffb36e;
+  box-shadow: 0 0 7px 2px #ff8529aa;
+}

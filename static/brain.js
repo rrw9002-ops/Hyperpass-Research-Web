@@ -60,21 +60,126 @@
   class ResearchOrb {
     constructor(canvas){
       this.canvas=canvas;this.ctx=canvas.getContext("2d");this.width=0;this.height=0;this.items=[];this.hits=[];this.hover=null;this.angle=0;this.last=0;
+      this.zoom=1;this.offsetX=0;this.offsetY=0;this.drag=null;
       this.reduced=window.matchMedia("(prefers-reduced-motion: reduce)");
       const n=1200,golden=Math.PI*(3-Math.sqrt(5));this.points=Array.from({length:n},(_,i)=>{const y=1-2*(i+.5)/n,r=Math.sqrt(1-y*y),theta=i*golden;return{x:Math.cos(theta)*r,y,z:Math.sin(theta)*r};});
       this.observer=new ResizeObserver(()=>this.fit());this.observer.observe(canvas);
       this.reduced.addEventListener("change",()=>this.draw());
-      canvas.addEventListener("pointermove",event=>{const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;this.hover=this.hits.find(hit=>(hit.x-x)**2+(hit.y-y)**2<144)||null;canvas.style.cursor=this.hover?"pointer":"default";if(this.reduced.matches)this.draw();});
-      canvas.addEventListener("pointerleave",()=>{this.hover=null;canvas.style.cursor="default";if(this.reduced.matches)this.draw();});
-      canvas.addEventListener("click",event=>{const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;const hit=this.hits.find(point=>(point.x-x)**2+(point.y-y)**2<144);if(hit)openItem(hit.item);});
+      this.bindNavigation();
+      this.makeControls();
       this.fit();
+    }
+    makeControls() {
+      const bar=make("div","orb-zoom-controls");
+      bar.setAttribute("role","group");
+      bar.setAttribute("aria-label","연구 지도 배율");
+      const button=(label,caption,onClick)=>{
+        const node=make("button","",caption);
+        node.type="button";node.title=label;
+        node.setAttribute("aria-label",label);
+        node.setAttribute("aria-controls",this.canvas.id);
+        node.addEventListener("click",onClick);
+        bar.append(node);
+        return node;
+      };
+      this.zoomOut=button("지도 축소","−",()=>this.zoomTo(this.zoom/1.25));
+      this.resetZoom=button("지도 배율과 위치 초기화","100%",()=>this.zoomTo(1));
+      this.zoomIn=button("지도 확대","+",()=>this.zoomTo(this.zoom*1.25));
+      this.canvas.after(bar);
+      this.updateControls();
+    }
+    updateControls() {
+      this.zoomOut.disabled=this.zoom<=1;
+      this.zoomIn.disabled=this.zoom>=4;
+      this.resetZoom.textContent=Math.round(this.zoom*100)+"%";
+      this.resetZoom.setAttribute("aria-label",`현재 ${Math.round(this.zoom*100)}%. 지도 배율과 위치 초기화`);
+      this.canvas.classList.toggle("zoomed",this.zoom>1);
+    }
+    zoomTo(requested,x=this.width/2,y=this.height/2) {
+      const next=Math.min(4,Math.max(1,requested));
+      if(next===this.zoom)return;
+      const ratio=next/this.zoom;
+      this.offsetX=(this.offsetX+this.width/2-x)*ratio+x-this.width/2;
+      this.offsetY=(this.offsetY+this.height/2-y)*ratio+y-this.height/2;
+      this.zoom=next;
+      this.clampOffset();
+      this.hover=null;this.canvas.style.cursor="";
+      this.updateControls();this.draw();
+    }
+    clampOffset() {
+      const limitX=this.width*(this.zoom-1)/2,limitY=this.height*(this.zoom-1)/2;
+      this.offsetX=Math.max(-limitX,Math.min(limitX,this.offsetX));
+      this.offsetY=Math.max(-limitY,Math.min(limitY,this.offsetY));
+    }
+    pointAt(event) {
+      const rect=this.canvas.getBoundingClientRect();
+      return {x:event.clientX-rect.left,y:event.clientY-rect.top};
+    }
+    hitAt(x,y) {
+      let closest=null,dist=14*14;
+      for(const hit of this.hits){
+        const d=(hit.x-x)**2+(hit.y-y)**2;
+        if(d<dist){closest=hit;dist=d;}
+      }
+      return closest;
+    }
+    bindNavigation() {
+      const canvas=this.canvas;
+      canvas.addEventListener("wheel",event=>{
+        if(event.ctrlKey||event.metaKey||!event.deltaY)return;
+        const unit=event.deltaMode===1?16:event.deltaMode===2?this.height:1;
+        const delta=Math.max(-180,Math.min(180,event.deltaY*unit));
+        const next=Math.min(4,Math.max(1,this.zoom*Math.exp(-delta*.002)));
+        if(next===this.zoom)return;
+        event.preventDefault();
+        const {x,y}=this.pointAt(event);
+        this.zoomTo(next,x,y);
+      },{passive:false});
+      // A click zooms the background or opens a record. A drag moves the magnified map.
+      canvas.addEventListener("pointerdown",event=>{
+        if(!event.isPrimary||event.button!==0)return;
+        const {x,y}=this.pointAt(event);
+        this.drag={id:event.pointerId,x,y,offsetX:this.offsetX,offsetY:this.offsetY,moved:false};
+        if(this.zoom>1)canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointermove",event=>{
+        const {x,y}=this.pointAt(event),drag=this.drag;
+        if(drag&&drag.id===event.pointerId){
+          const dx=x-drag.x,dy=y-drag.y;
+          if(Math.hypot(dx,dy)>5)drag.moved=true;
+          if(drag.moved&&this.zoom>1){
+            this.offsetX=drag.offsetX+dx;this.offsetY=drag.offsetY+dy;
+            this.clampOffset();this.hover=null;canvas.style.cursor="grabbing";this.draw();
+          }
+          return;
+        }
+        this.hover=this.hitAt(x,y);
+        canvas.style.cursor=this.hover?"pointer":"";
+        if(this.reduced.matches||this.hover)this.draw();
+      });
+      canvas.addEventListener("pointerup",event=>{
+        if(!this.drag||this.drag.id!==event.pointerId)return;
+        const drag=this.drag;this.drag=null;canvas.style.cursor="";
+        if(drag.moved)return;
+        const {x,y}=this.pointAt(event);
+        if(x<0||y<0||x>this.width||y>this.height)return;
+        const hit=this.hitAt(x,y);
+        if(hit)openItem(hit.item);
+        else this.zoomTo(this.zoom<4?this.zoom*1.5:1,x,y);
+      });
+      canvas.addEventListener("pointercancel",()=>{this.drag=null;canvas.style.cursor="";});
+      canvas.addEventListener("pointerleave",event=>{
+        if(!canvas.hasPointerCapture(event.pointerId))this.drag=null;
+        this.hover=null;canvas.style.cursor="";this.draw();
+      });
     }
     fit(){const rect=this.canvas.getBoundingClientRect();if(rect.width<1||rect.height<1)return;this.width=rect.width;this.height=rect.height;const ratio=Math.min(2,window.devicePixelRatio||1);this.canvas.width=Math.round(this.width*ratio);this.canvas.height=Math.round(this.height*ratio);this.ctx.setTransform(ratio,0,0,ratio,0,0);this.draw();}
     setItems(items){this.items=items.slice(0,28);this.draw();}
     project(point,radius,cx,cy){const c=Math.cos(this.angle),s=Math.sin(this.angle),x=point.x*c+point.z*s,z=point.z*c-point.x*s,scale=1+z*.12;return{x:cx+x*radius*scale,y:cy+point.y*radius*scale,z};}
     draw(){
       const {ctx,width:w,height:h}=this;if(!ctx||w<1||h<1||!this.canvas.getClientRects().length)return;
-      ctx.clearRect(0,0,w,h);const cx=w/2,cy=h*.5,radius=Math.min(w*.36,h*.32);
+      this.clampOffset();
+      ctx.clearRect(0,0,w,h);const cx=w/2+this.offsetX,cy=h*.5+this.offsetY,radius=Math.min(w*.36,h*.32)*this.zoom;
       const haze=ctx.createRadialGradient(cx,cy,3,cx,cy,radius*1.2);haze.addColorStop(0,"rgba(233,206,118,.12)");haze.addColorStop(.35,"rgba(176,133,45,.04)");haze.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=haze;ctx.fillRect(0,0,w,h);
       ctx.save();ctx.translate(cx,cy);ctx.rotate(-.35);ctx.strokeStyle="rgba(195,168,110,.10)";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(0,0,radius*1.22,radius*.75,0,0,Math.PI*2);ctx.stroke();ctx.strokeStyle="rgba(240,167,93,.07)";ctx.beginPath();ctx.ellipse(0,0,radius*1.32,radius*1.12,.85,0,Math.PI*2);ctx.stroke();ctx.restore();
       const points=this.points.map(point=>this.project(point,radius,cx,cy)).sort((a,b)=>a.z-b.z);
@@ -84,7 +189,7 @@
       this.items.forEach((item,i)=>{const theta=i*2.399963+this.angle*.15,yy=1-2*(i+.5)/Math.max(this.items.length,1),rr=Math.sqrt(Math.max(0,1-yy*yy)),p=this.project({x:Math.cos(theta)*rr,y:yy*.85,z:Math.sin(theta)*rr},radius*1.05,cx,cy);const active=this.hover?.item.id===item.id&&this.hover?.item.type===item.type;ctx.strokeStyle="rgba(241,164,90,.16)";ctx.lineWidth=.65;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(p.x,p.y);ctx.stroke();const color=item.type==="incomplete"?"#bca987":item.type==="sample"?"#a39a77":item.type==="chart"?"#d2d6a2":"#ff8c47";ctx.shadowColor=color;ctx.shadowBlur=active?20:10;ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,active?4.8:3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=active?"rgba(255,206,142,.65)":"rgba(231,194,133,.25)";ctx.beginPath();ctx.arc(p.x,p.y,active?8:6,0,Math.PI*2);ctx.stroke();this.hits.push({...p,item});});
       if(this.hover){const hit=this.hits.find(p=>p.item.id===this.hover.item.id&&p.item.type===this.hover.item.type);if(hit){const label=(hit.item.title||types[hit.item.type]).slice(0,24);ctx.font="10px Segoe UI, sans-serif";const labelWidth=Math.min(w-24,ctx.measureText(label).width+20),left=Math.max(8,Math.min(w-labelWidth-8,hit.x-labelWidth/2)),top=Math.max(8,hit.y-35);ctx.fillStyle="rgba(22,18,10,.94)";ctx.fillRect(left,top,labelWidth,24);ctx.strokeStyle="rgba(183,122,64,.7)";ctx.strokeRect(left,top,labelWidth,24);ctx.fillStyle="#e8e2d2";ctx.fillText(label,left+10,top+16);}}
     }
-    tick(time){if(!this.reduced.matches&&!document.hidden&&this.canvas.getClientRects().length&&time-this.last>34){this.angle+=.002;this.last=time;this.draw();}}
+    tick(time){if(!this.hover&&!this.drag&&!this.reduced.matches&&!document.hidden&&this.canvas.getClientRects().length&&time-this.last>34){this.angle+=.002;this.last=time;this.draw();}}
   }
   const orbs=["research-orb","brain-orb"].map(id=>$(id)).filter(Boolean).map(canvas=>new ResearchOrb(canvas));
   function animate(time){orbs.forEach(orb=>orb.tick(time));requestAnimationFrame(animate);}requestAnimationFrame(animate);

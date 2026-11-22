@@ -1,26 +1,14 @@
-# 강사용 배포 안내 · v0.4.1-preview
+# 강사용 배포 안내 · v0.5.0-preview
 
 Windows, Apple Silicon Mac, Intel Mac용 실행 파일을 각각 해당 OS에서 빌드합니다.
 실행 파일 ZIP에는 Python이 포함되어 수강생이 Python이나 Codex를 설치할 필요가
 없습니다. 소스 ZIP만 사용할 때는 Python 3.11 이상이 필요합니다.
 
-2026-11-22 [GitHub Actions 실행 `45009985262`](https://github.com/rrw9002-ops/Hyperpass-Research-Web/actions/runs/45009985262),
-커밋 `6e7c0f7`에서 Windows x64·macOS arm64·macOS x86_64 작업이 모두 성공했습니다.
-각 OS에서 Python 3.11.9와 PyInstaller 6.22.3을 사용했고 단위 검사 175개, 소스 설치·단독
-실행 파일·압축 해제 ZIP의 각 9개 HTTP 설치 점검을 통과했습니다.
-검증 JSON과 단위 검사 로그는 해당 실행의 `validation-v0.4.0-preview-*` 아티팩트에 있습니다.
-작업 폴더에는 `.ci/45009985262/validation-v0.4.0-preview-*/`로 보관했습니다.
-이 결과는 고정 데모·합성 CSV·로컬 실패 응답을 사용하는 네이티브 CI 설치 점검입니다.
-실제 사용자 Mac의 GUI·Gatekeeper·서명·공증·TradingView 연동을 검증한 결과는 아닙니다.
-실제 AI는 `gpt-5.4`·추론 `medium`로 백테스트 해석 보고서의 전체 완료를 확인했습니다.
-기존 등록 키 프로세스에서 확인한 결과이며 새 EXE의 유료 호출 검사와는 구분합니다.
-이번 릴리스의 정확한 커밋·CI 결과·SHA-256은 첨부 검증 JSON을 기준으로 확인하세요.
+[v0.5.0 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.5.0-preview)의 검증 JSON에서 커밋, 플랫폼별 실행 결과와 파일의 SHA-256을 확인하세요.
+네이티브 설치 점검은 소스, 단독 실행 파일, 압축 해제한 앱을 각각 실행합니다. 개인 지표 저장·수정·다시 열기도 검사합니다.
 
-GitHub Actions가 통과한 아티팩트와 해당 검증 결과를 함께 확인하고 배포하세요.
-CI의 통과는 외부 AI 모델이나 실제 TradingView에서의 실행 검증을 대신하지 않습니다.
-현재 문서·다음 배포의 버전은 `v0.4.1-preview`입니다. 위 CI 기록은 `6e7c0f7`의
-`v0.4.0-preview` 이름으로 생성됐으므로 다른 커밋의 파일까지 검증된 것으로 취급하지 않습니다.
-강사는 배포할 파일의 커밋과 검증 결과, 실제 키·차트 확인 기록을 함께 검토합니다.
+이전 버전에서 Windows TradingView Desktop의 백테스트와 OpenAI 기술 분석·독립 검토·최종 보고서를 실제로 확인했습니다. 검증한 모델과 실행 조건은 [검증 기록](VALIDATION.md)에 있습니다.
+Mac 사용자의 Gatekeeper, GUI와 TradingView Desktop 연결은 별도 검증 항목입니다.
 
 ## 포함할 파일
 
@@ -83,7 +71,7 @@ Python 3.11과 PyInstaller 6.22.3으로 각각 빌드합니다. Mac 라벨과 CP
 각 OS에서 전체 단위 테스트 → 독립 소스 설치 점검 → 실행 파일 빌드 → 실행 파일
 초기 지침 생성 점검 → ZIP 생성 → 실제 압축 해제본 점검 순서로 진행합니다.
 모든 단계가 성공해야 OS별 배포 ZIP과 SHA-256을 업로드합니다. 검증 로그와 JSON은
-실패 시에도 별도 `validation-v0.4.1-preview-*` 아티팩트로 업로드합니다.
+실패 시에도 별도 `validation-v0.5.0-preview-*` 아티팩트로 업로드합니다.
 
 ## 검증 결과의 범위
 

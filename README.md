@@ -1,4 +1,4 @@
-# Hyperpass Research Web · v0.4.1-preview
+# Hyperpass Research Web · v0.5.0-preview
 
 질문을 입력하면 **Head Manager가 필요한 전문 에이전트를 구성하고, 근거를 검수하고,
 보완과 독립 검토를 거쳐 보고서를 남기는 로컬 웹앱**입니다. 브라우저에서 사용하며
@@ -11,15 +11,15 @@ Codex 앱·MCP·증권사 인증을 요구하지 않습니다. 매매·계좌 �
 | --- | --- |
 | 리서치 팀 | 종합 분석 또는 지정한 전문 에이전트에게 질문하고 검토된 보고서 확인 |
 | 차트 연구실 | 실제 OHLCV 차트·지표, 로컬 전략 검증, Pine Script 내보내기와 기술 분석 연결 |
-| TradingView | Desktop의 종목·주기·지표 설정, Pine 코드 적용·컴파일, 실제 Strategy Tester 보고서 저장 |
-| Second Brain | 이 앱의 최근 저장 보고서·차트 실험 검색, 다시 열기와 이전 보고서 선택 재사용 |
+| TradingView | 한글 종목명·티커 검색, 기본 지표 설정, 요청으로 개인 지표 만들기, Pine 전략 백테스트 |
+| Second Brain | 지도를 확대해 저장된 연구 탐색, 보고서·차트 검색과 다시 열기 |
 | 팀 구성 | 역할 지침·분석 방법·공통 참고 문서를 편집하고 다음 분석에 적용 |
 
 ## 처음 실행
 
 수강생은 [빠른 시작 안내](docs/QUICKSTART.md)를 순서대로 따라 하세요.
 
-1. [v0.4.1 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.4.1-preview)에 게시된
+1. [v0.5.0 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.5.0-preview)에 게시된
    본인 OS용 ZIP을 받습니다.
    소스 ZIP은 [공개 저장소](https://github.com/rrw9002-ops/Hyperpass-Research-Web)의 **Code → Download ZIP**입니다.
 2. ZIP을 **새 폴더에 압축 해제**합니다. 압축 파일 안에서 바로 실행하지 않습니다.
@@ -157,8 +157,9 @@ Pine 내보내기는 표준 일봉용 텍스트입니다. 로컬 슬리피지가
    웹앱의 **TradingView → Desktop 연결 실행**을 누르고 **연결 확인**으로 현재
    종목·주기가 보이는지 확인합니다. 기본 연결 포트는 9222입니다. 이미 실행 중인
    앱에 디버그 연결이 없으면 안내에 따라 직접 종료 후 다시 연결 실행하세요.
-2. 차트가 여러 개라면 작업할 창을 선택합니다. 종목·주기와 필요한 지표·기간을
-   정하고 **차트 설정 적용**을 누릅니다. 반영된 항목과 일부 실패 경고를 확인합니다.
+2. 차트가 여러 개라면 작업할 창을 선택합니다. 종목명이나 티커를 입력합니다.
+   예를 들어 `삼성전자`, `엔비디아`, `NVDA`로 검색한 뒤 목록에서 거래소와 종목을
+   확인해 선택합니다. 주기와 기본 지표를 정하고 **차트 설정 적용**을 누릅니다.
 3. `strategy()`로 선언한 Pine 코드를 붙여넣거나 **Pine 파일 읽기**로 불러옵니다.
    차트 연구실에서 내보낸 Pine도 사용할 수 있습니다. 코드를 확인한 뒤
    **전략 적용 · 백테스트**를 누릅니다.
@@ -179,6 +180,14 @@ TradingView API 키는 필요하지 않습니다. **Desktop 설치·로그인·�
 계산 제한이 달라지며 앱이 이를 해제하지 않습니다. [공식 요금제 비교](https://www.tradingview.com/pricing/)
 및 [전략 데이터 범위 안내](https://www.tradingview.com/pine-script-docs/faq/strategies/)를 확인하세요.
 Windows Desktop에서 실제 컴파일·보고서 수집을 확인했으며 Mac의 동일 동작은 아직 미검증입니다.
+
+## 차트에 나만의 지표 그리기
+
+TradingView 탭에서 최근 1년 고점 연결 예제를 열어 코드를 확인하고 차트에 적용합니다.
+다른 아이디어는 원하는 선·계산 기준·기간을 한국어로 적고 연결한 AI로 코드를 생성합니다.
+직접 작성한 Pine `indicator()` 코드도 붙여넣을 수 있습니다. 코드를 편집하고 이름을
+붙여 저장하면 이 컴퓨터에서 다시 열어 수정할 수 있습니다. 차트에 적용한 뒤 실행 결과를 확인하세요.
+전략 백테스트에는 별도의 `strategy()` 편집 영역을 사용합니다.
 
 ## 팀 지침과 분석 방법 수정
 
@@ -291,23 +300,11 @@ API 오류가 나면 웹앱에서 연결을 다시 확인하세요. 인증 실�
 
 ## 배포와 검증
 
-2026-11-22 [GitHub Actions 실행 `45009985262`](https://github.com/rrw9002-ops/Hyperpass-Research-Web/actions/runs/45009985262)의
-검증 커밋은 `6e7c0f7`입니다. Windows x64, macOS arm64, macOS x86_64 각각에서 Python 3.11.9로
-단위 검사 **175개 모두 통과**했고, 네이티브 빌드와 소스·단독 실행 파일·압축 해제 ZIP의
-**각 9개 HTTP 설치 점검**도 통과했습니다. 단독 실행 파일은 외부 `team/`이 없는 폴더에서
-기본 문서 33개를 생성했습니다. 해당 CI 아티팩트의 기록 버전은 `v0.4.0-preview`이며,
-현재 문서·배포 표기는 `v0.4.1-preview`입니다. 각 배포 파일의 커밋과 검증 기록을 함께 확인하세요.
-이 설치 점검은 고정 데모·합성 CSV·로컬 모의 TradingView 실패 응답을 사용합니다.
+[v0.5.0 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.5.0-preview)의 검증 파일에서 배포 커밋, OS별 테스트와 설치 점검, ZIP의 SHA-256을 확인할 수 있습니다.
+설치 점검에는 실제 앱을 실행해 개인 지표를 저장하고 수정한 뒤 다시 여는 과정이 포함됩니다.
 
-이 README의 존재나 화면 체험 성공은 실제 API 분석 성공을 뜻하지 않습니다.
-Windows EXE 실행·샘플 보고서 저장, Yahoo/TradingView 스크리너, KIS 국내주식·FMP
-미국주식 실제 조회를 확인했습니다. 사용자의 OpenAI `gpt-5-mini` 연결 확인과 Head
-Manager의 실제 요청 1회도 성공했습니다. 그 실행은 이후 팀 계획 처리 오류로 중단되어
-최종 보고서가 없었습니다. 해당 오류는 수정하고 회귀 검사를 통과했으며, 수정 후 실제
-모델로 전체 보고서가 완성되는지는 추가 확인이 필요합니다. Claude·Gemini는 모의 응답
-프로토콜 검사를 통과했지만 실제 유료 호출은 미검증입니다. OpenBB 서버, 실제 사용자 Mac의
-GUI·Gatekeeper·서명·공증 경로, Mac TradingView 연동은 별도 검증 항목입니다.
-Mac 네이티브 CI 설치 점검은 이 사용자 환경 검증을 대신하지 않습니다.
+[v0.4.1 검증 기록](docs/VALIDATION.md)에는 Windows에서 OpenAI `gpt-5.4`·추론 `medium`으로 실제 TradingView 백테스트를 해석해 독립 검토와 최종 보고서 내보내기까지 완료한 결과가 있습니다.
+Windows에서 Yahoo·TradingView·KIS·FMP 데이터 조회도 확인했습니다. Claude·Gemini 유료 계정, 실제 사용자 Mac의 GUI·Gatekeeper·TradingView는 별도 확인이 필요합니다.
 차트 연구실의 계산 검사는 모의 OHLCV와 실제 Yahoo AAPL·하이닉스 이력으로
 수행했습니다. 별도로 Windows TradingView Desktop에서 새 Pine 전략 컴파일·실제
 41거래 보고서 수집·SMA20/RSI14 추가·반복 실행·컴파일 실패 처리를 확인했으며,

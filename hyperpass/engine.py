@@ -248,13 +248,20 @@ class Engine:
         with self.lock:
             self.progress["current_role"] = role
         self._event("agent_started", role, f"{role} 실행", status="running", call_number=number)
-        result = self.provider.complete(instructions, payload, schema=schema, web_search=search)
-        with self.lock:
-            for key in ("input_tokens", "output_tokens", "total_tokens"):
-                self.usage[key] += max(0, int(result.get("usage", {}).get(key, 0)))
-        self._check_cancel()
-        data = result.get("data")
-        validate(data, schema)
+        try:
+            result = self.provider.complete(instructions, payload, schema=schema, web_search=search)
+            with self.lock:
+                for key in ("input_tokens", "output_tokens", "total_tokens"):
+                    self.usage[key] += max(0, int(result.get("usage", {}).get(key, 0)))
+            self._check_cancel()
+            data = result.get("data")
+            validate(data, schema)
+        except Cancelled:
+            self._event("agent_cancelled", role, f"{role} 호출 중단", status="cancelled", call_number=number)
+            raise
+        except Exception:
+            self._event("agent_failed", role, f"{role} 응답 처리 실패", status="failed", call_number=number)
+            raise
         with self.lock:
             self.completed_calls += 1
             self.progress["calls_completed"] = self.completed_calls
