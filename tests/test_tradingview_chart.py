@@ -45,7 +45,7 @@ class ChartTests(unittest.TestCase):
             console.log(JSON.stringify({before,close:after.bars[0].close}));
           })().catch(e=>{console.error(e);process.exitCode=1;});
         """.replace("EXPRESSION", tv.CHART_EXPRESSION.replace('__COUNT__','1'))
-        result=subprocess.run(['node'], input=program, text=True, capture_output=True, timeout=12)
+        result=subprocess.run(['node'], input=program, encoding='utf-8', capture_output=True, timeout=12)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(json.loads(result.stdout),{'before':{'error':'loading'},'close':1113000})
 
