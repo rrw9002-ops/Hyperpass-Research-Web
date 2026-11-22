@@ -4,7 +4,11 @@ Windows, Apple Silicon Mac, Intel Mac용 실행 파일을 각각 해당 OS에서
 실행 파일 ZIP에는 Python이 포함되어 수강생이 Python이나 Codex를 설치할 필요가
 없습니다. 소스 ZIP만 사용할 때는 Python 3.11 이상이 필요합니다.
 
-현재 Windows 소스·단독 EXE·ZIP의 설치 점검은 통과했습니다. Mac 두 CPU의 CI는
+2026-11-22 최신 Windows 코드를 Python 3.14.3·PyInstaller 6.22.3으로 빌드하고,
+소스·단독 EXE·압축 해제 ZIP에서 각각 9개 HTTP 설치 점검을 통과했습니다.
+검증 JSON은 빌드 작업 폴더의 `validation/source-v4-final.json`,
+`validation/standalone-v4-final.json`, `validation/archive-v4-final.json`에 보관했습니다.
+이 결과는 고정 데모·합성 CSV·로컬 실패 응답을 사용하는 설치 점검입니다. Mac 두 CPU의 CI는
 구성되어 있지만 아직 실행하지 않았습니다. 아래 Mac 절차는 빌드·검증 방법이며
 완료된 Mac 지원 인증을 뜻하지 않습니다. 실제 AI의 전체 분석 완료도 추가 확인이 필요합니다.
 
