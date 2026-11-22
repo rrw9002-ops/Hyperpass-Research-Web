@@ -559,9 +559,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200,run)
         static={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
         static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js'})
+        static.update({'/fonts/PretendardVariable.woff2': 'fonts/PretendardVariable.woff2',
+                       '/fonts/OFL.txt': 'fonts/OFL.txt'})
         if path in static and static[path]:
             file=self.app.root/'static'/static[path]
-            if file.is_file(): return self.send(200,file.read_bytes(),(mimetypes.guess_type(str(file))[0] or 'application/octet-stream')+'; charset=utf-8')
+            if file.is_file():
+                if file.suffix == '.woff2':
+                    return self.send(200, file.read_bytes(), 'font/woff2')
+                return self.send(200,file.read_bytes(),(mimetypes.guess_type(str(file))[0] or 'application/octet-stream')+'; charset=utf-8')
         return self.send(404,{'error':'경로를 찾을 수 없습니다.'})
 
     def do_POST(self):

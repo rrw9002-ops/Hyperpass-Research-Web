@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
-from build_release import TOP_FILES, TEAM_FILES, build, release_path
+from build_release import TOP_FILES, TEAM_FILES, FONT_FILES, build, release_path
 
 
 class PackageTests(unittest.TestCase):
@@ -22,6 +22,10 @@ class PackageTests(unittest.TestCase):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("default team guidance", encoding="utf-8")
+        for name in FONT_FILES:
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'font fixture')
         for name in ("hyperpass/engine.py", "methods/risk-manager.md", "static/index.html", "references/research-framing.md"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -45,11 +49,13 @@ class PackageTests(unittest.TestCase):
             self.assertIn("Hyperpass-Research-Web/Start-Windows.cmd", z.namelist())
             self.assertIn("Hyperpass-Research-Web/methods/risk-manager.md", z.namelist())
             self.assertIn("Hyperpass-Research-Web/references/research-framing.md", z.namelist())
+            self.assertEqual({n.removeprefix('Hyperpass-Research-Web/') for n in z.namelist() if '/static/fonts/' in n}, FONT_FILES)
             self.assertEqual({n.removeprefix('Hyperpass-Research-Web/') for n in z.namelist() if '/team/' in n}, TEAM_FILES)
 
     def test_path_traversal_and_unknown_extensions_rejected(self):
         for name in ("../secret", "/app.py", "C:/secret", "docs/../secret.md", "docs\\secret.md",
-                     "hyperpass/credentials.json", "docs/personal.sqlite", "static/test.map", "docs//a.md"):
+                     "hyperpass/credentials.json", "docs/personal.sqlite", "static/test.map", "docs//a.md",
+                     "static/fonts/private.woff2", "static/fonts/unknown.txt"):
             self.assertFalse(release_path(name), name)
 
     def test_mac_start_is_executable_and_archive_reproducible(self):

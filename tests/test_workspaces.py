@@ -177,6 +177,11 @@ class WorkspaceHTTPTests(unittest.TestCase):
                 self.assertIn(media,headers.get('Content-Type',''))
                 self.assertGreater(len(body),100)
         self.assertEqual(self.request('/api/charts/'+'e'*32)[0],404)
+        with urlopen(self.base + '/fonts/PretendardVariable.woff2') as font:
+            self.assertEqual(font.headers['Content-Type'], 'font/woff2')
+            self.assertEqual(font.read(4), b'wOF2')
+        with urlopen(self.base + '/fonts/OFL.txt') as license_file:
+            self.assertIn(b'SIL Open Font License', license_file.read())
 
 
 if __name__ == '__main__': unittest.main()

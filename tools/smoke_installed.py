@@ -68,8 +68,11 @@ class Client:
         except HTTPError as error:
             response = error
         with response:
-            raw = response.read().decode('utf-8')
-            body = json.loads(raw) if 'application/json' in response.headers.get('Content-Type', '') else raw
+            body = response.read()
+            if response.headers.get_content_type() != 'font/woff2':
+                body = body.decode('utf-8')
+                if response.headers.get_content_type() == 'application/json':
+                    body = json.loads(body)
             require(response.status == expected, f'{path}: expected HTTP {expected}, received {response.status}: {str(body)[:200]}')
             return body
 
@@ -177,6 +180,13 @@ def exercise(client, installation, record):
         require(bool(client.request('/' + asset)), 'Missing UI asset: ' + asset)
     record('startup_and_assets', 'Fresh localhost app loaded all workspace assets with no configured key or selected model.')
 
+    font_url = '/fonts/PretendardVariable.woff2'
+    require(font_url in client.request('/style.css'), 'Main stylesheet does not reference the bundled font')
+    font = client.request(font_url)
+    require(isinstance(font, bytes) and font.startswith(b'wOF2') and int.from_bytes(font[8:12], 'big') == len(font),
+            'Installed app did not serve a complete WOFF2 font with the correct content type')
+    record('bundled_korean_font', 'Loaded the local Pretendard Variable font from the installed app stylesheet and verified its WOFF2 header and length.')
+
     indicator_code = '//@version=6\nindicator("Smoke average", overlay=true)\nplot(ta.sma(close, 20))'
     saved_indicator = client.request('/api/indicators', {'name': '내 이동평균', 'code': indicator_code}, expected=201)
     edited_indicator = dict(saved_indicator, name='50봉 평균', code=indicator_code.replace('20)', '50)'))
@@ -261,7 +271,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.5.1-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.5.2-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

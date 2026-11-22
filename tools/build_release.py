@@ -14,6 +14,7 @@ from hyperpass.team_config import DOCUMENTS
 
 TOP_FILES = {"app.py", "README.md", "LICENSE", "NOTICE", "Start-Windows.cmd", "Start-Mac.command", "Hyperpass-Research-Web.spec"}
 TEAM_FILES = {"team/" + path for path in DOCUMENTS}
+FONT_FILES = {"static/fonts/PretendardVariable.woff2", "static/fonts/OFL.txt"}
 TREE_SUFFIXES = {
     "hyperpass": {".py"}, "methods": {".md"}, "references": {".md"},
     "static": {".html", ".css", ".js", ".svg"},
@@ -35,6 +36,8 @@ def release_path(name: str) -> bool:
         return True
     if p.parts[0] == "team":
         return name in TEAM_FILES
+    if p.parts[:2] == ("static", "fonts"):
+        return name in FONT_FILES
     return len(p.parts) > 1 and p.parts[0] in TREE_SUFFIXES and p.suffix.lower() in TREE_SUFFIXES[p.parts[0]]
 
 
@@ -66,7 +69,7 @@ def build(root: Path = ROOT, destination: Path | None = None, windows: bool = Fa
     root = root.resolve()
     if windows and mac:
         raise ValueError("Choose one executable platform per package")
-    missing = sorted(name for name in TOP_FILES | TEAM_FILES if not (root / name).is_file())
+    missing = sorted(name for name in TOP_FILES | TEAM_FILES | FONT_FILES if not (root / name).is_file())
     if missing:
         raise ValueError("Required package files missing: " + ", ".join(missing))
     destination = destination or root / "dist"
