@@ -175,9 +175,10 @@ _PROGRAM = r"""async function(action, p) {
     if(p.fresh && (typeof p.fresh.template!=='string' || m.e.getValue()!==p.fresh.template ||
         String(m.e.getModel()?.uri)!==p.fresh.uri)) return {error:'source_changed_before_new_script'};
     const previous=m.e.getValue(); if(previous.length>200000) return {error:'backup_too_large'};
+    if(p.batchTitle && strategies().some(s=>s.metaInfo()?.description===p.batchTitle)) return {error:'run_replaced'};
     const refs={}; for(const s of strategies()) {const rd=reportOf(s);refs[s.id()]={ref:rd,signature:JSON.stringify(rd?.performance || null)};}
     const beforeStudies=p.kind==='indicator' ? chart.getAllStudies().map(s=>s.id) : [];
-    window.__hyperpassResearchRun={token:p.token,refs,beforeStudies,kind:p.kind,source:p.code,started:Date.now()};
+    window.__hyperpassResearchRun={token:p.token,refs,beforeStudies,kind:p.kind,source:p.code,batchTitle:p.batchTitle,started:Date.now()};
     m.e.setValue(p.code); m.e.focus();
     return {previous_source:previous,source_matches:m.e.getValue()===p.code,before_ids:Object.keys(refs)};
   }
@@ -523,6 +524,7 @@ def _run_pine(port, code, target_id, timeout, on_progress, title=None, expected_
             token = batch_token or uuid.uuid4().hex
             assignment = {"code":code, "token":token, "kind":kind}
             if batch_token:
+                assignment["batchTitle"] = "HP-" + batch_token
                 assignment["fresh"] = {"uri":fresh.get("uri"), "template":fresh.get("template")}
             changed = _check(session.call("set_source", assignment))
             if not changed.get("source_matches"):
@@ -559,6 +561,10 @@ def _run_pine(port, code, target_id, timeout, on_progress, title=None, expected_
                 # An old report can update for unrelated reasons. Only a new
                 # strategy ID created after this submission can complete this run.
                 matches = [r for r in snapshot.get("reports", []) if r.get("available") and r.get("study_id") in snapshot.get("new_ids", []) and (r.get("runtime_status") or {}).get("type") != 3]
+                if batch_token and matches:
+                    tagged = [r for r in snapshot.get("reports", []) if r.get("strategy") == "HP-" + batch_token]
+                    if len(matches) != 1 or len(tagged) != 1 or tagged[0]["study_id"] != matches[0]["study_id"]:
+                        raise ChartControlError("새 보고서가 이번 실행의 고유한 임시 전략 제목과 일치하지 않습니다. 차트 항목을 그대로 둡니다.")
                 current_errors = []
                 for error in snapshot.get("errors", []):
                     if error.get("severity", 0) >= 8 and error not in current_errors:

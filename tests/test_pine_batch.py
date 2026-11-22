@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from hyperpass import pine_batch as pb
+from hyperpass.pine_identity import new_execution, source_hash, title_span
 from hyperpass import tradingview_control as tv
 from hyperpass.research_desk import ResearchDesk
 from hyperpass.server import Store
@@ -61,6 +62,7 @@ class PineBatchTests(unittest.TestCase):
         self.desk = ResearchDesk(self.store)
         self.channel = Channel()
         self.symbols = []
+        self.other_report = False
         self.extra = lambda symbol: None
         for item in (patch('hyperpass.market_prices.pine_universe',return_value=(LIST,'listing fixture')),
                      patch.object(tv,'_select',return_value=(TARGET,[TARGET])),
@@ -81,7 +83,7 @@ class PineBatchTests(unittest.TestCase):
         chart['ids'].append(study)
         self.extra(chart['symbol'])
         return {'status':'completed','study_id':study,'previous_source':'unneeded','chart':copy.deepcopy(chart),
-                'report':{'study_id':study,'strategy':'Ranked scope','available':True,'metrics':{'net_profit_percent':12.3},'currency':'USD'}}
+                'report':{'study_id':study,'strategy':'Ranked scope' if self.other_report else 'HP-'+batch_token,'available':True,'metrics':{'net_profit_percent':12.3},'currency':'USD'}}
 
     def run_job(self, request=REQUEST):
         job = self.desk.start(request)
@@ -106,6 +108,14 @@ class PineBatchTests(unittest.TestCase):
         self.assertEqual(reopened.job(job['id'])['result']['rows'],result['rows'])
         self.assertEqual(reopened.pine_report(job['id'],1)['report']['study_id'],'owned2')
         self.assertNotIn('previous_source',reopened.pine_report(job['id'],1))
+        self.assertEqual(CODE,job['request']['code'])
+        first,second = (reopened.pine_report(job['id'],i)['execution'] for i in (0,1))
+        self.assertNotEqual(first['title'],second['title'])
+        self.assertEqual(second['title'],job['result']['rows'][1]['execution_title'])
+        self.assertIn(second['title'],second['source'])
+        self.assertTrue(second['source'].endswith('plot(close)'))
+        self.assertEqual(second['original_sha256'], source_hash(CODE))
+        self.assertEqual(second['source_sha256'], source_hash(second['source']))
         rebuilt=reopened.save_strategy({'name':'edited after test','kind':'pine','definition':dict(job['request'],code=CODE+'\nplot(open)')})
         self.assertEqual(rebuilt['definition']['symbols'],['AAA','BBB'])
         self.assertNotEqual(rebuilt['definition']['code'],job['request']['code'])
@@ -121,7 +131,15 @@ class PineBatchTests(unittest.TestCase):
         self.assertEqual(job['result']['restore']['status'],'unconfirmed')
         self.assertIn('student-study',self.channel.state['ids'])
         self.assertIsNotNone(self.desk.pine_report(job['id'],0))
-        self.assertIsNone(self.desk.pine_report(job['id'],1))
+        self.assertIsNone(self.desk.pine_report(job['id'],1)['report'])
+
+    def test_single_foreign_report_with_original_title_is_never_accepted_or_removed(self):
+        self.other_report = True
+        job = self.run_job()
+        self.assertEqual((job['status'],job['result']['completed']),('failed',0))
+        self.assertEqual(self.channel.deleted,[])
+        self.assertEqual(self.channel.state['ids'],['existing','owned1'])
+        self.assertIsNone(self.desk.pine_report(job['id'],0)['report'])
 
     def test_cancel_keeps_finished_report_and_restores_chart(self):
         self.extra=lambda _symbol:self.desk.cancel(self.desk.active[0])
@@ -154,13 +172,15 @@ class PinePageGuardTests(unittest.TestCase):
         program = """
 const run = PROGRAM;
 let removed = [], ids = ['existing','ours'], source = 'pine';
+const marker='HP-'+'a'.repeat(32);
+let title={existing:'Original',ours:marker};
 const ed = {getValue:()=>source,setValue:v=>source=v,getDomNode:()=>el};
 const el = {__reactFiber$test:{memoizedProps:{value:{monacoEnv:{editor:{getEditors:()=>[ed]}}}}},contains:()=>true};
 global.document={querySelector:()=>el,querySelectorAll:()=>[]};
 const chart = {getAllStudies:()=>ids.map(id=>({id})),symbol:()=>'NASDAQ:AAA',resolution:()=>'1D',
  chartType:()=>1,removeEntity:id=>{removed.push(id);ids=ids.filter(x=>x!==id)},
- _chartWidget:{model:()=>({model:()=>({dataSources:()=>ids.map(id=>({id:()=>id,metaInfo:()=>({is_strategy:true}),reportData:()=>({})}))})})}};
-global.window={TradingViewApi:{_activeChartWidgetWV:{value:()=>chart}},__hyperpassResearchRun:{token:'x',kind:'strategy',source,refs:{existing:{}}}};
+ _chartWidget:{model:()=>({model:()=>({dataSources:()=>ids.map(id=>({id:()=>id,metaInfo:()=>({is_strategy:true,description:title[id]}),reportData:()=>({})}))})})}};
+global.window={TradingViewApi:{_activeChartWidgetWV:{value:()=>chart}},__hyperpassResearchRun:{token:'x',kind:'strategy',source,batchTitle:marker,refs:{existing:{}}}};
 (async()=>{
 document.body={innerText:'Log in'};
 if((await run('batch',{operation:'read'})).login_prompt) throw Error('Menu login link misidentified');
@@ -168,9 +188,14 @@ document.body.innerText='Log in\\nContinue with Google\\nDo not have an account?
 if(!(await run('batch',{operation:'read'})).login_prompt || !(await run('run_state',{batch:true,token:'x'})).login_required) throw Error('Guest login request not detected');
 document.body.innerText='';
 let expected=await run('batch',{operation:'read'});
-let args={operation:'retire',token:'x',expected,study_id:'ours'};
+let args={operation:'retire',token:'x',expected,study_id:'ours',execution_title:marker};
 if(!(await run('batch',{...args,token:'wrong'})).error) throw Error('Wrong token accepted');
 if(!(await run('batch',{...args,study_id:'existing'})).error) throw Error('Existing entity accepted');
+title.ours='Original';
+if(!(await run('batch',args)).error) throw Error('Unrelated study with the original name accepted');
+title.ours=marker;title.existing=marker;
+if(!(await run('batch',args)).error) throw Error('Two studies bearing the same execution title accepted');
+title.existing='Original';
 source='student changed';
 if(!(await run('batch',args)).error) throw Error('Edited source accepted');
 source='pine';

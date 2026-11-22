@@ -74,7 +74,7 @@ jobs:
       - name: Upload validated preview distribution
         uses: actions/upload-artifact@v4
         with:
-          name: Hyperpass-Research-Web-v0.7.0-preview-${{ matrix.artifact }}
+          name: Hyperpass-Research-Web-v0.7.1-preview-${{ matrix.artifact }}
           if-no-files-found: error
           path: |
             dist/${{ matrix.archive }}
@@ -83,6 +83,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validation-v0.7.0-preview-${{ matrix.artifact }}
+          name: validation-v0.7.1-preview-${{ matrix.artifact }}
           if-no-files-found: warn
           path: validation/

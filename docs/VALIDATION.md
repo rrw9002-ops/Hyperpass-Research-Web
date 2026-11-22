@@ -1,4 +1,4 @@
-# 검증 범위 — v0.7.0-preview
+# 검증 범위 — v0.7.1-preview
 
 이 앱은 매매를 제거한 별도 웹 구현입니다. 원본의 인증 서비스와 동일한 제품이라고
 표현하지 않습니다. 모델 실행기는 OpenAI Responses, Anthropic Claude, Google Gemini
@@ -15,7 +15,7 @@ Risk/Judgment의 독립 검토와 역할 책임 분리를 유지합니다.
 
 ## v0.7 국내·미국 조건 설정
 
-플랫폼별 설치 검사에서 국내·미국 공시 실습을 열고 PER 조건, 종목, 자금과 실행 기간이 유지되는지 확인합니다. Pine 시작 코드의 원화·달러 계정 통화 및 틱 슬리피지도 검사합니다. 실제 시세를 사용한 두 실습의 검증 범위와 설치본 해시는 [v0.7 배포 기록](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.0-preview)에서 확인할 수 있습니다.
+플랫폼별 설치 검사에서 국내·미국 공시 실습을 열고 PER 조건, 종목, 자금과 실행 기간이 유지되는지 확인합니다. Pine 시작 코드의 원화·달러 계정 통화 및 틱 슬리피지도 검사합니다. 실제 시세를 사용한 두 실습의 검증 범위와 설치본 해시는 [v0.7 배포 기록](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.1-preview)에서 확인할 수 있습니다.
 
 ## v0.6.2 개인 지표와 백테스트 작업 공간
 

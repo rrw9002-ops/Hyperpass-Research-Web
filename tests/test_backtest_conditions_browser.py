@@ -19,7 +19,7 @@ class FixtureDesktop:
     def start(self):
         self.backup("saved chart text", "NASDAQ:AAPL", "1D", "test-target")
 
-    def execute(self, symbol):
+    def execute(self, symbol, code, execution):
         return {"status": "completed", "chart": {"symbol": symbol, "timeframe": "1D"},
                 "report": {"strategy": "Fixture test", "currency": "USD",
                            "metrics": {"net_profit_percent": 8.25, "max_drawdown_percent": 2.5, "total_trades": 5}}}
@@ -110,6 +110,22 @@ class BacktestConditionsBrowserTest(unittest.TestCase):
                 expect(get("bt-batch-rows")).to_contain_text("8.25%")
                 self.assertEqual(app.desk.job(app.desk.list_jobs()[0]["id"])["request"]["mode"],scope)
             self.assertEqual(scopes, ["single","custom","market"])
+            execution = get("bt-batch-rows").locator("tr").first.locator("details")
+            execution.locator("summary").click()
+            execution.get_by_role("button", name="실행 코드 보기").click()
+            execution_title = execution.locator(".cost-note").inner_text()
+            self.assertTrue(execution_title.startswith("HP-"))
+            stored = app.desk.pine_report(app.desk.list_jobs()[0]["id"], 0)["execution"]
+            self.assertEqual(stored["title"], execution_title)
+            marked_code = stored["source"]
+            self.assertIn(execution_title, marked_code)
+            self.assertIn('strategy.entry("L", strategy.long)', marked_code)
+            expect(execution.locator("pre")).to_have_text(marked_code)
+            with page.expect_download() as event:
+                execution.get_by_role("button", name="실행 코드 ↓").click()
+            downloaded = event.value
+            self.assertEqual(downloaded.suggested_filename, "pine-execution-0.pine")
+            self.assertEqual(downloaded.path().read_text(encoding="utf8"), marked_code)
             get("bt-pine-tested-name").fill("확인한 시장 전략")
             get("bt-save-tested-pine").click()
             expect(get("bt-pine-result-feedback")).to_contain_text("저장")

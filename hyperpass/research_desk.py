@@ -150,8 +150,20 @@ class ResearchDesk:
 
     def pine_report(self, identity, index):
         with self.store.connect() as db:
-            row = db.execute('SELECT body FROM pine_batch_reports WHERE job_id=? AND idx=?',(identity,index)).fetchone()
-        return json.loads(row[0]) if row and row[0] else None
+            row = db.execute('''SELECT p.body,b.request FROM pine_batch_reports p JOIN backtests b ON b.id=p.job_id
+                              WHERE p.job_id=? AND p.idx=?''',(identity,index)).fetchone()
+        if not row or not row[0]:
+            return None
+        result = json.loads(row[0])
+        execution = result.get('execution')
+        if execution and execution.get('version') == 1:
+            from .pine_identity import execution_source, source_hash
+            original = json.loads(row[1])['code']
+            source = execution_source(original, execution)
+            if source_hash(original) != execution['original_sha256'] or source_hash(source) != execution['source_sha256']:
+                raise ValueError('저장된 Pine 실행 원문의 검증값이 일치하지 않습니다.')
+            execution['source'] = source
+        return result
 
     def start(self, payload):
         from .market_backtest import validate_request

@@ -75,7 +75,7 @@
       $("bt-pine-tested-name").hidden=!canSave;
       box.querySelector("label[for='bt-pine-tested-name']").hidden=!canSave;
       $("bt-pine-backup").hidden=!result.previous_source;
-      $("bt-batch-basis").textContent="종목마다 원문 Pine 코드를 별도로 실행한 Strategy Tester 결과입니다. 각 보고서의 통화와 검증 기간을 확인하세요.";
+      $("bt-batch-basis").textContent="종목별 Strategy Tester 결과입니다. 원본 JSON에서 각 보고서의 통화, 검증 기간과 실행 정보를 확인할 수 있습니다.";
       $("bt-batch-count").textContent=[["대상",result.requested],["완료",result.completed],["실패",result.failed],["건너뜀",result.skipped]].map(([l,n])=>l+" "+number(n)+"종목").join(" · ");
       $("bt-batch-restore").textContent=result.restore?.message||"";
       message("bt-pine-result-feedback","");
@@ -94,6 +94,27 @@
               download(data,"pine-report-"+row.report_index+".json");
             });
             detail.append(b);
+            if(row.execution_title) {
+              const info=el("details",null,"bt-execution-source"), summary=el("summary","실행 제목·코드");
+              const title=el("p",row.execution_title,"cost-note"), code=el("pre"), actions=el("div",null,"studio-actions");
+              const view=el("button","실행 코드 보기","text-button"), file=el("button","실행 코드 ↓","text-button");
+              const feedback=el("p",null,"feedback"); feedback.setAttribute("role","status");
+              view.type=file.type="button";code.hidden=true;code.tabIndex=0;
+              let execution;
+              async function loadExecution(button,action) {
+                button.disabled=true;
+                try {
+                  const data=execution || (await api("/api/backtests/"+encodeURIComponent(id)+"/pine-reports/"+row.report_index)).execution;
+                  if(!data || data.title!==row.execution_title || typeof data.source!=="string")throw new Error("이 보고서에서 실행 코드를 확인할 수 없습니다.");
+                  execution=data;feedback.textContent="";action(data);
+                } catch(error) {feedback.textContent=error.message;}
+                finally {button.disabled=false;}
+              }
+              view.onclick=()=>{if(!code.hidden){code.hidden=true;view.textContent="실행 코드 보기";return;}
+                loadExecution(view,data=>{code.textContent=data.source;code.hidden=false;view.textContent="실행 코드 닫기";});};
+              file.onclick=()=>loadExecution(file,data=>download(data.source,"pine-execution-"+row.report_index+".pine","text/plain"));
+              actions.append(view,file); info.append(summary,title,actions,code,feedback); detail.append(info);
+            }
           }else detail.textContent=row.error||row.reason||"—";
           tr.append(detail);
         }

@@ -145,3 +145,8 @@
 #workspace-tradingview > .studio-output { margin-top:17px; }
 #bt-pine-results td:last-child { white-space:normal; min-width:100px; }
 @media(max-width:680px) { #bt-target-panel #bt-industries { grid-template-columns:minmax(0,1fr); } }
+
+.bt-execution-source { margin-top: .4rem; white-space: normal; }
+.bt-execution-source summary { cursor: pointer; }
+.bt-execution-source .cost-note { overflow-wrap: anywhere; }
+.bt-execution-source pre { max-height: 18rem; max-width: min(32rem, 62vw); overflow: auto; white-space: pre; }

@@ -1,10 +1,10 @@
 """Run one verified TradingView Strategy Tester experiment per selected instrument."""
 import re
 import time
-import uuid
 
 from . import tradingview_control as tv
 from .market_prices import validate_universe
+from .pine_identity import new_execution, title_span
 from .tradingview_chart import _port
 
 
@@ -28,8 +28,12 @@ def validate(payload):
     target = payload.get('target_id') or None
     if target is not None and (not isinstance(target,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,150}',target)):
         raise ValueError('TradingView Desktop의 열린 차트 창을 선택하세요.')
+    code = tv._validate_code(payload.get('code'))
+    span = title_span(code)
+    if len(new_execution(code, span)[0].encode('utf-8')) > tv._MAX_CODE:
+        raise ValueError('실행 식별용 표시 제목을 포함한 Pine 코드는 200KB 이하여야 합니다.')
     return {'engine':'pine', 'market':market, 'mode':mode, 'symbols':[s.strip() for s in symbols],
-            'universe':validate_universe(market, payload.get('universe',{})), 'code':tv._validate_code(payload.get('code')),
+            'universe':validate_universe(market, payload.get('universe',{})), 'code':code,
             'timeframe':tf, 'port':_port(payload.get('port',9222)), 'target_id':target}
 
 
@@ -59,7 +63,10 @@ _GUARD = r"""
       const id=p.study_id;
       const current=strategies().filter(s=>s.id()===id);
       if (typeof id!=='string' || current.length!==1 || Object.hasOwn(run.refs,id) ||
-          !before.ids.includes(id) || typeof chart.removeEntity!=='function')
+          !before.ids.includes(id) || run.batchTitle!==p.execution_title ||
+          !/^HP-[0-9a-f]{32}$/.test(run.batchTitle) || current[0].metaInfo()?.description!==run.batchTitle ||
+          strategies().filter(s=>s.metaInfo()?.description===run.batchTitle).length!==1 ||
+          typeof chart.removeEntity!=='function')
         return {error:'batch_changed'};
       await chart.removeEntity(id);
       return {requested:true};
@@ -168,16 +175,16 @@ class Desktop:
             time.sleep(.25)
         raise Unavailable('TradingView에서 요청한 종목·주기를 확인하지 못했습니다.')
 
-    def execute(self, symbol):
+    def execute(self, symbol, source, execution):
         self.move('symbol',symbol)
         self.move('timeframe',self.request['timeframe'])
         self.compare()
-        token = uuid.uuid4().hex
+        token = execution['title'][3:]
         def progress(*event):
             if len(event)==1 and event[0].get('stage')=='backup':
                 if event[0]['previous_source'] != self.expected['source']:
                     raise Changed('새 Pine 문서를 열기 전에 편집기 원문이 변경되어 중단했습니다.')
-        result = tv._run_pine(self.request['port'], self.request['code'],self.target['id'],75,progress,
+        result = tv._run_pine(self.request['port'], source,self.target['id'],75,progress,
                               expected_chart=self.expected, batch_token=token)
         current = self.read()
         if (not tv._same_chart_symbol(current['symbol'],symbol) or
@@ -187,14 +194,14 @@ class Desktop:
         if (result['status'] != 'completed' and current['source'] == self.expected['source'] and
                 current['ids'] == self.expected['ids']):
             self.expected = current
-            if 'compile_action' in result and current['source'] == self.request['code']:
+            if 'compile_action' in result and current['source'] == source:
                 self.token, self.text_changed = token, True
             if self.login_prompt and result['status'] != 'login_required':
                 result['status'] = 'login_required'
                 result.setdefault('warnings',[]).append('TradingView 로그인 후 Desktop 차트에서 실행하세요.')
             result.pop('previous_source',None)
             return result
-        if current['source'] != self.request['code']:
+        if current['source'] != source:
             raise Changed('전략 실행 중 편집기 원문이 변경되어 중단했습니다.')
         new_ids = set(current['ids']) - set(self.expected['ids'])
         if not set(self.expected['ids']).issubset(current['ids']):
@@ -203,13 +210,14 @@ class Desktop:
         report = result.get('report') or {}
         if new_ids and (new_ids != {owner} or report.get('study_id') != owner or result['status'] != 'completed'):
             raise Changed('새 전략을 이번 실행의 단일 항목으로 확인할 수 없습니다. Desktop에서 확인하세요.')
-        if result['status'] == 'completed' and (not new_ids or report.get('available') is not True):
+        if result['status'] == 'completed' and (not new_ids or report.get('available') is not True or
+                                                 report.get('strategy') != execution['title']):
             raise Changed('이번 종목에서 생성한 새 전략 보고서를 확인할 수 없습니다.')
         self.text_changed = True
         self.token, self.expected = token, current
         if new_ids:
             try:
-                self.mutate('retire', study_id=owner)
+                self.mutate('retire', study_id=owner, execution_title=execution['title'])
                 wanted = dict(current, ids=sorted(set(current['ids']) - {owner}))
                 for _ in range(12):
                     current = self.read()
@@ -263,6 +271,7 @@ def run(request, stop, checkpoint, store_row, backup):
     visited = 0
     try:
         checkpoint(0,'검증 대상 종목·거래소를 확인하고 있습니다.',result)
+        span = title_span(request['code'])
         members, source = pine_universe(request['mode'],request['market'],request['symbols'],request['universe'])
         if not members:
             raise ValueError('조건에 해당하는 Pine 검증 대상이 없습니다.')
@@ -280,8 +289,10 @@ def run(request, stop, checkpoint, store_row, backup):
             halt = False
             if target:
                 checkpoint(int(100*index/len(members)),f'{index+1:,}/{len(members):,} · {target} 전략 검증 중',result)
+                code,execution = new_execution(request['code'], span)
+                row['execution_title'] = execution['title']
                 try:
-                    raw = desk.execute(target)
+                    raw = desk.execute(target,code,execution)
                     rep = raw.get('report') or {}
                     if raw['status'] == 'completed':
                         row.update(status='completed',metrics=rep['metrics'],currency=rep.get('currency'))
@@ -296,6 +307,8 @@ def run(request, stop, checkpoint, store_row, backup):
                 except (ValueError,OSError) as exc:
                     row.update(status='failed',error=str(exc))
                     reason, halt = str(exc), True
+                raw = raw or {'status':'unverified', 'report':None, 'warnings':[row['error']]}
+                raw['execution'] = execution
             else:
                 row['error'] = '원본 상장의 TradingView 거래소 식별자를 확인할 수 없습니다.'
             store_row(index,row,raw)

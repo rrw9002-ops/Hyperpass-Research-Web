@@ -161,6 +161,7 @@
   window.HyperpassSymbols.attach("bt-symbol","bt-symbol");
   const pineActions = node("div",null,"studio-pine-save");
   pineActions.innerHTML = `<div class="bt-target-row"><div><label class="field-label" for="bt-pine-name">전략 이름</label><input id="bt-pine-name" maxlength="120" value="내 Pine 전략"></div><div id="bt-pine-period"></div></div>
+    <p class="cost-note">실행할 때마다 TradingView에 임시 전략 제목을 표시해 해당 종목의 보고서를 확인합니다. 내 전략에는 입력한 제목과 코드를 저장합니다.</p>
     <div class="studio-actions"><button type="button" id="bt-pine-preview" class="button ghost">실행 조건 확인</button>
     <button type="button" id="bt-pine-run" class="button primary" disabled>Pine 백테스트 실행</button></div>
     <p id="bt-pine-preview-summary" class="portfolio-summary" hidden></p>
