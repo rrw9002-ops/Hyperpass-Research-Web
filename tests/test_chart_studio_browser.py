@@ -25,6 +25,10 @@ class ChartStudioBrowserTest(unittest.TestCase):
             for method in ("status", "configure_chart", "run_indicator", "run_strategy"):
                 stack.enter_context(patch("hyperpass.tradingview_control." + method, getattr(desktop, method)))
             stack.enter_context(patch("hyperpass.symbol_search.search_symbols", return_value={"results": []}))
+            # These controls also start automatic chart previews. Keep the indicator
+            # workflow independent of real quote services or a user's Desktop.
+            stack.enter_context(patch.object(app.sources,"chart_history",side_effect=ValueError("fixture quote offline")))
+            stack.enter_context(patch("hyperpass.tradingview_chart.fetch_selected_chart",side_effect=ValueError("fixture chart offline")))
             server = serve(app, 0)
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()

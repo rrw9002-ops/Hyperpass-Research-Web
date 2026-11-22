@@ -1,5 +1,10 @@
 # 검증 범위 — v0.7.1-preview
 
+## v0.7.2 차트 자동 전환과 시세 출처
+
+저장된 Yahoo 삼성전자 차트에서 데이터 출처를 TradingView로 바꾼 후 SK하이닉스를 선택해 별도 조회 클릭 없이 실제 일봉 300개를 확인했습니다. 선택 도중 늦게 도착한 응답, Desktop 미연결, CSV 대기 및 자동 미리보기 저장도 별도로 검사합니다. 국내 가격은 KIS 마스터 또는 연결된 KIS 시세 API, 미국 가격은 Yahoo Finance 관측값을 사용합니다. [설치본과 실제 검증 기록](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.2-preview)
+
+
 이 앱은 매매를 제거한 별도 웹 구현입니다. 원본의 인증 서비스와 동일한 제품이라고
 표현하지 않습니다. 모델 실행기는 OpenAI Responses, Anthropic Claude, Google Gemini
 API를 지원하며 Codex가 필요 없습니다. Head Manager의 최소 팀 선택, 근거 채택·보완,

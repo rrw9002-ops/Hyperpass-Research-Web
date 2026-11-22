@@ -1,8 +1,15 @@
-# Hyperpass Research Web · v0.7.1-preview
+# Hyperpass Research Web · v0.7.2-preview
 
 질문을 입력하면 **Head Manager가 필요한 전문 에이전트를 구성하고, 근거를 검수하고,
 보완과 독립 검토를 거쳐 보고서를 남기는 로컬 웹앱**입니다. 브라우저에서 사용하며
 Codex 앱·MCP·증권사 인증을 요구하지 않습니다. 매매·계좌 조회·주문 기능은 없습니다.
+
+## 수강생 시작 가이드
+
+ZIP을 모두 풀고 **수강생-시작가이드.html**을 열거나 앱 상단의 **수강생 가이드**를 누르세요. AI에게 복사해서 보낼 예문과 개인용 수정본을 만들고 복구하는 방법까지 들어 있습니다.
+
+[설치하기](docs/STUDENT-INSTALL.md) · [세팅하기](docs/STUDENT-SETUP.md) · [첫 실습부터 백테스트까지](docs/STUDENT-USE.md) · [AI와 개인화하기](docs/STUDENT-AI.md)
+
 
 검정 바탕에 크림색 글자와 주황색 강조를 쓰고, 패널 가장자리에 은은한 유리 반사광을 더했습니다. 저장된 연구는 우주 형태의
 지도와 목록에서 살펴볼 수 있습니다. 작업 공간은 다음과 같습니다.
@@ -26,7 +33,7 @@ Codex 앱·MCP·증권사 인증을 요구하지 않습니다. 매매·계좌 �
 
 수강생은 [빠른 시작 안내](docs/QUICKSTART.md)를 순서대로 따라 하세요.
 
-1. [v0.7.1 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.1-preview)에 게시된
+1. [v0.7.2 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.2-preview)에 게시된
    본인 OS용 ZIP을 받습니다.
    소스 ZIP은 [공개 저장소](https://github.com/rrw9002-ops/Hyperpass-Research-Web)의 **Code → Download ZIP**입니다.
 2. ZIP을 **새 폴더에 압축 해제**합니다. 압축 파일 안에서 바로 실행하지 않습니다.
@@ -312,7 +319,7 @@ API 오류가 나면 웹앱에서 연결을 다시 확인하세요. 인증 실�
 
 ## 배포와 검증
 
-[v0.7.1 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.1-preview)의 검증 파일에서 배포 커밋, OS별 테스트와 설치 점검, ZIP의 SHA-256을 확인할 수 있습니다.
+[v0.7.2 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.2-preview)의 검증 파일에서 배포 커밋, OS별 테스트와 설치 점검, ZIP의 SHA-256을 확인할 수 있습니다.
 설치 점검에는 실제 앱을 실행해 개인 지표를 저장하고 수정한 뒤 다시 여는 과정이 포함됩니다.
 
 [v0.4.1 검증 기록](docs/VALIDATION.md)에는 Windows에서 OpenAI `gpt-5.4`·추론 `medium`으로 실제 TradingView 백테스트를 해석해 독립 검토와 최종 보고서 내보내기까지 완료한 결과가 있습니다.

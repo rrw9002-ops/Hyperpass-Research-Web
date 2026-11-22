@@ -7,7 +7,7 @@
  <div class="panel-heading"><h2>데이터와 가설</h2><span class="small-muted">01 — SETUP</span></div>
  <label for="chart-source" class="field-label">차트 데이터</label><select id="chart-source"><option value="yahoo">Yahoo Finance · 키 없이 조회</option><option value="tradingview">TradingView · Desktop 차트 조회</option><option value="csv">TradingView · CSV 가져오기</option></select>
  <label for="chart-symbol" class="field-label">종목명 또는 티커</label><input id="chart-symbol" maxlength="80" required autocomplete="off" spellcheck="false" placeholder="예: 삼성전자, 애플 또는 AAPL" aria-describedby="chart-symbol-status"><div id="chart-symbol-matches" class="tv-symbol-matches"></div><p id="chart-symbol-status" class="small-muted" aria-live="polite"></p>
- <div class="field-pair"><div><label for="chart-period" class="field-label">조회 기간</label><select id="chart-period"><option value="1y">1년</option><option value="2y" selected>2년</option><option value="5y">5년</option></select></div><div><label for="chart-interval" class="field-label">차트 주기</label><select id="chart-interval"><option value="1d">일봉</option><option value="1wk">주봉</option><option value="1mo">월봉</option></select></div></div><p id="chart-source-hint" class="cost-note"></p>
+ <div id="chart-date-selectors" class="field-pair"><div><label for="chart-period" class="field-label">조회 기간</label><select id="chart-period"><option value="1y">1년</option><option value="2y" selected>2년</option><option value="5y">5년</option></select></div><div><label for="chart-interval" class="field-label">차트 주기</label><select id="chart-interval"><option value="1d">일봉</option><option value="1wk">주봉</option><option value="1mo">월봉</option></select></div></div><p id="chart-source-hint" class="cost-note"></p>
  <details id="chart-desktop"><summary>TradingView Desktop 연결</summary><label class="field-label" for="chart-port">Desktop 연결 포트</label><input id="chart-port" type="number" value="9222" min="1024" max="65535"><label class="field-label" for="chart-tv-timeframe">조회·지표에 사용할 Desktop 주기</label><select id="chart-tv-timeframe"><option value="">차트 연구실 주기 사용</option><option value="1D">일봉</option><option value="1W">주봉</option><option value="1M">월봉</option><option value="60">1시간</option><option value="15">15분</option><option value="5">5분</option></select><p class="cost-note">차트 조회와 Pine 지표 적용에 사용할 Desktop 창을 선택하세요. Desktop 데이터는 최대 500봉까지 읽습니다.</p><div class="chart-actions"><button type="button" class="button ghost compact" id="chart-use-desktop">열린 종목 가져오기</button><button type="button" class="text-button" id="chart-desktop-launch">Desktop 연결 실행</button></div><label id="chart-target-block" hidden>열린 차트 탭<select id="chart-target" aria-label="열린 Desktop 차트 탭"></select></label><p id="chart-desktop-status" class="small-muted" role="status"></p></details>
  <div id="chart-csv-block" hidden><label class="field-label" for="chart-csv-file">내보낸 CSV 파일</label><input id="chart-csv-file" type="file" accept=".csv,text/csv"><label class="field-label" for="chart-csv">또는 CSV 붙여넣기</label><textarea id="chart-csv" rows="4" placeholder="time,open,high,low,close,volume"></textarea><p class="cost-note">TradingView 차트 메뉴의 ‘차트 데이터 내보내기’에서 저장한 CSV를 선택하세요. 파일 이름에 거래소와 종목이 있으면 자동으로 채웁니다. 최대 5,000행이며 시가·고가·저가·종가가 필요합니다.</p></div>
  <label for="chart-strategy" class="field-label">검증할 전략</label><select id="chart-strategy"><option value="trend_breakout">강의 ① 추세 돌파</option><option value="mean_reversion">강의 ② 평균 회귀</option><option value="sma_cross">추가 예제 · 이동평균 교차</option><option value="none">지표·차트만 분석</option></select><p id="chart-rule" class="lab-rule"></p>
@@ -23,7 +23,7 @@
  </div><p id="chart-overlay-note" class="chart-series-note" hidden></p>
  <div class="price-canvas-wrap"><canvas id="price-canvas" aria-label="실제 OHLCV 가격 차트"></canvas><div id="chart-empty">차트 데이터가 아직 없습니다.<br><small>왼쪽에서 종목과 전략을 선택해 시작하세요.</small></div></div><p id="chart-cursor" class="chart-cursor"></p><details id="chart-overlay-readout" class="chart-overlay-readout"><summary>가격 지표 값</summary><div id="chart-overlay-values"></div></details><div class="chart-indicator-strip"><span id="chart-indicator-period"></span><div id="chart-indicator-values"></div></div><p id="chart-indicator-note" class="chart-series-note" hidden></p><canvas id="indicator-canvas" role="img" aria-label="보조지표 차트"></canvas><div class="chart-navigation"><label>확대 <input id="chart-visible" aria-label="표시할 봉 수" type="range" min="30" max="500" value="150"></label><label>시간 이동 <input id="chart-position" aria-label="차트 구간 이동" type="range" min="0" max="100" value="100"></label></div><div id="chart-latest" class="chart-latest"></div></section>
  <section id="backtest-result" class="panel backtest-panel" hidden><div class="panel-heading"><div><span class="section-kicker">03 — LOCAL BACKTEST</span><h2>가설을 숫자로 확인하기</h2></div><span class="lab-badge">앱 자체 OHLCV 계산</span></div><p class="cost-note">TradingView Strategy Tester 실행 결과가 아닙니다. 자산 곡선에는 미실현 손익이 포함됩니다.</p><div id="chart-metrics" class="chart-metrics"></div><canvas id="equity-canvas" aria-label="미실현 손익 포함 자산 곡선"></canvas><div id="chart-validation" class="chart-validation"></div><details><summary>체결 기록 · 신호와 실행 시점</summary><div class="chart-table-scroll"><table><thead><tr><th>진입 체결</th><th>청산 체결</th><th>진입가</th><th>청산가</th><th>비용 차감 수익률</th></tr></thead><tbody id="chart-trades"></tbody></table></div></details></section>
- <section id="chart-conclusion" class="panel chart-conclusion" hidden><div class="panel-heading"><div><span class="section-kicker">04 — SAVE & INTERPRET</span><h2>데이터에서 해석으로</h2></div><span class="saved-chip">Second Brain에 저장됨</span></div><div class="chart-actions"><button id="chart-ask" class="button primary" type="button">기술 분석 에이전트에게 질문 ↗</button><span id="chart-watch-actions"></span><a id="chart-json" class="button ghost" download>원본 결과 JSON ↓</a><a id="chart-pine" class="button ghost" download>Pine Script ↓</a></div><p class="cost-note">Pine은 표준 일봉용입니다. TradingView 컴파일·실행은 확인 전이며, bps 슬리피지는 Pine에서 1틱 가정으로 바뀝니다. AI 해석은 질문을 확인하고 시작 버튼을 눌렀을 때만 호출합니다.</p><details><summary>데이터 품질·계산 가정·한계</summary><ul id="chart-warnings"></ul><pre id="chart-assumptions"></pre></details></section></div></div>`;
+ <section id="chart-conclusion" class="panel chart-conclusion" hidden><div class="panel-heading"><div><span class="section-kicker">04 — SAVE & INTERPRET</span><h2>데이터에서 해석으로</h2></div><span id="chart-saved-status" class="saved-chip">Second Brain에 저장됨</span></div><div class="chart-actions"><button type="button" id="chart-save-preview" class="button primary" hidden>이 차트를 Second Brain에 저장</button><button id="chart-ask" class="button primary" type="button">기술 분석 에이전트에게 질문 ↗</button><span id="chart-watch-actions"></span><a id="chart-json" class="button ghost" download>원본 결과 JSON ↓</a><a id="chart-pine" class="button ghost" download>Pine Script ↓</a></div><p class="cost-note">Pine은 표준 일봉용입니다. TradingView 컴파일·실행은 확인 전이며, bps 슬리피지는 Pine에서 1틱 가정으로 바뀝니다. AI 해석은 질문을 확인하고 시작 버튼을 눌렀을 때만 호출합니다.</p><details><summary>데이터 품질·계산 가정·한계</summary><ul id="chart-warnings"></ul><pre id="chart-assumptions"></pre></details></section></div></div>`;
  const oscillators = {
    rsi: {group:'모멘텀', label:'RSI · 상대강도지수', lines:[['rsi','RSI']], bounds:[0,100], guides:[30,70], period:s=>s.rsi_period+'봉'},
    stochastic: {group:'모멘텀', label:'스토캐스틱 · %K / %D', lines:[['stoch_k','%K'],['stoch_d','%D']], bounds:[0,100], guides:[20,80], period:()=>'14 · 3 · 3봉'},
@@ -64,11 +64,14 @@
  function enabledOverlays(){
    return Array.from($('chart-overlays').querySelectorAll('input:checked'), input=>input.dataset.overlay);
  }
- let current=null,hover=-1,busy=false,sourceRestoreNote='',appliedSettings={};
+ let current=null,hover=-1,sourceRestoreNote='',appliedSettings={};
+ const sourceLabels={yahoo:'Yahoo Finance',tradingview:'TradingView Desktop',csv:'TradingView CSV','tradingview-csv':'TradingView CSV'};
+ let chartVersion=0, chartTimer, waiting=null, composing=false;
+ const loading=new Set();
  const fmt=(x,d=2)=>Number.isFinite(x)?x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d}):'—';
  const pct=x=>Number.isFinite(x)?`${x>0?'+':''}${fmt(x)}%`:'계산 대상 없음';
  function feedback(text,error=false){$('chart-feedback').textContent=text;$('chart-feedback').classList.toggle('error-text',error);}
- function updateSource(){const v=$('chart-source').value;if(v==='tradingview')$('chart-desktop').open=true;$('chart-tv-timeframe').options[0].textContent=v==='tradingview'?'열린 Desktop 주기 사용':'차트 연구실 주기 사용';$('chart-csv-block').hidden=v!=='csv';$('chart-source').required=true;$('chart-period').disabled=v!=='yahoo';$('chart-period').required=v==='yahoo';$('chart-interval').disabled=v==='tradingview';$('chart-interval').required=v==='yahoo'||v==='csv';$('chart-port').required=v==='tradingview';$('chart-symbol').required=v!=='tradingview';const hints={yahoo:'조회 기간·주기는 새로 가져올 Yahoo 가격 이력에 적용됩니다.',tradingview:'조회하면 선택한 Desktop 창을 입력한 종목·주기로 전환하고 봉을 읽습니다. 종목을 비워 두면 열린 종목을 사용합니다.',csv:'조회 기간은 CSV에 포함된 실제 봉의 범위입니다. 차트 주기는 원본 파일과 같게 지정하세요.'};$('chart-source-hint').textContent=[hints[v]||'새 조회에 사용할 데이터 출처를 선택하세요.',sourceRestoreNote].filter(Boolean).join(' ');}
+ function updateSource(){const v=$('chart-source').value;$('chart-date-selectors').hidden=v==='tradingview';if(v==='tradingview')$('chart-desktop').open=true;$('chart-tv-timeframe').options[0].textContent=v==='tradingview'?'열린 Desktop 주기 사용':'차트 연구실 주기 사용';$('chart-csv-block').hidden=v!=='csv';$('chart-source').required=true;$('chart-period').disabled=v!=='yahoo';$('chart-period').required=v==='yahoo';$('chart-interval').disabled=v==='tradingview';$('chart-interval').required=v==='yahoo'||v==='csv';$('chart-port').required=v==='tradingview';$('chart-symbol').required=v!=='tradingview';const hints={yahoo:'조회 기간·주기는 새로 가져올 Yahoo 가격 이력에 적용됩니다.',tradingview:'종목이나 주기를 바꾸면 선택한 Desktop 차트에서 최대 500봉을 자동으로 불러옵니다. 종목을 비우고 조회하면 열린 종목을 사용합니다.',csv:'조회 기간은 CSV에 포함된 실제 봉의 범위입니다. 차트 주기는 원본 파일과 같게 지정하세요.'};$('chart-source-hint').textContent=[hints[v]||'새 조회에 사용할 데이터 출처를 선택하세요.',sourceRestoreNote].filter(Boolean).join(' ');}
  function restoreChoice(id,value,unknownLabel){const input=$(id);input.querySelector('option[data-unrecorded]')?.remove();if([...input.options].some(option=>option.value===value)){input.value=value;return true;}const missing=node('option','',unknownLabel);missing.value='';missing.disabled=true;missing.dataset.unrecorded='true';input.prepend(missing);input.value='';return false;}
  function restoreSource(result){
   const packet=result.source_packet||{},p=result.provenance||{},provider=packet.provider||result.provider||p.provider;
@@ -266,39 +269,142 @@
     link.title='거래소를 확인한 종목에 차트 링크를 제공합니다.';
   }
  }
- function render(result){current=result;hover=-1;$('chart-cursor').textContent='';$('chart-empty').hidden=true;$('chart-visible').max=result.candles.length;$('chart-visible').min=Math.min(30,result.candles.length);$('chart-visible').value=Math.min(150,result.candles.length);$('chart-position').value=100;renderInstrument(result);const p=result.provenance;$('chart-provenance').textContent=`${result.provider} · ${p.bars}봉 · ${p.first_time.slice(0,10)} — ${p.last_time.slice(0,10)} · ${p.currency} · 저장됨`;
-  $('chart-conclusion').hidden=false;$('chart-json').href=`/api/charts/${result.id}/export`;$('chart-pine').href=`/api/charts/${result.id}/pine`;$('chart-pine').hidden=!result.pine_script;
+ function storageState(result){
+  const p=result.provenance;$('chart-provenance').textContent=`${sourceLabels[result.provider]||result.provider} · ${p.bars}봉 · ${p.first_time.slice(0,10)} — ${p.last_time.slice(0,10)} · ${p.currency} · ${result.preview?'미리보기':'저장됨'}`;
+  $('chart-conclusion').hidden=false;
+  $('chart-save-preview').hidden=!result.preview;
+  $('chart-save-preview').disabled=false;
+  $('chart-saved-status').textContent=result.preview?'미리보기':'Second Brain에 저장됨';
+  $('chart-json').hidden=!!result.preview;
+  $('chart-ask').textContent=result.preview?'저장하고 기술 분석 에이전트에게 질문 ↗':'기술 분석 에이전트에게 질문 ↗';
+  $('chart-watch-actions').hidden=!!result.preview;
+  $('chart-json').href=`/api/charts/${result.id}/export`;$('chart-pine').href=`/api/charts/${result.id}/pine`;$('chart-pine').hidden=!!result.preview||!result.pine_script;
+ }
+ function render(result,restoreForm=false){$('chart-tv-link').hidden=false;$('chart-provenance').classList.remove('error-text');current=result;hover=-1;$('chart-cursor').textContent='';$('chart-empty').hidden=true;$('chart-visible').max=result.candles.length;$('chart-visible').min=Math.min(30,result.candles.length);$('chart-visible').value=Math.min(150,result.candles.length);$('chart-position').value=100;renderInstrument(result);storageState(result);
   $('chart-warnings').replaceChildren(...result.warnings.map(w=>node('li','',w)));$('chart-assumptions').textContent=assumptionsText(result);$('chart-latest').replaceChildren();const last=result.candles.at(-1),lastInd=result.evidence_summary.latest_indicators;metric($('chart-latest'),'마지막 종가',fmt(last.close));metric($('chart-latest'),`SMA ${result.settings.fast_period}`,fmt(lastInd.sma_fast));metric($('chart-latest'),'RSI',fmt(lastInd.rsi));metric($('chart-latest'),'ATR',fmt(lastInd.atr));
   const b=result.backtest;$('backtest-result').hidden=!b;
   if(b){$('chart-metrics').replaceChildren();const m=b.metrics;metric($('chart-metrics'),'총수익률 · 평가손익 포함',pct(m.total_return_pct),m.total_return_pct>=0?'positive':'negative');metric($('chart-metrics'),'최대 낙폭',pct(m.max_drawdown_pct),'negative');metric($('chart-metrics'),'완결 거래',String(m.closed_trades));metric($('chart-metrics'),'승률',Number.isFinite(m.win_rate_pct)?fmt(m.win_rate_pct)+'%':'완결 거래 없음');$('chart-validation').replaceChildren();metric($('chart-validation'),'뒤 구간 별도 검증',pct(b.out_of_sample?.metrics?.total_return_pct));metric($('chart-validation'),'비용 2배 가정',pct(b.cost_stress?.metrics?.total_return_pct));metric($('chart-validation'),'동일 구간 단순 보유',pct(m.buy_hold_return_pct));metric($('chart-validation'),'종료 시 포지션',b.open_position?'미청산 · 평가손익 포함':'보유 없음');$('chart-trades').replaceChildren();for(const t of b.trades){const tr=node('tr');for(const v of [t.entry_time.slice(0,10),t.exit_time.slice(0,10),fmt(t.entry_price),fmt(t.exit_price),pct(t.return_pct)])tr.append(node('td','',v));$('chart-trades').append(tr);}if(!b.trades.length){const tr=node('tr'),td=node('td','','이 구간에는 완결 거래가 없습니다.');td.colSpan=5;tr.append(td);$('chart-trades').append(tr);}}
-  applySettings(result.settings);drawPrice();if(b)drawEquity();window.HyperpassBrain?.refresh();document.dispatchEvent(new CustomEvent('hyperpass:chart-result',{detail:result}));
+  if(restoreForm)applySettings(result.settings);
+  drawPrice();if(b)drawEquity();if(!result.preview)window.HyperpassBrain?.refresh();
+  document.dispatchEvent(new CustomEvent('hyperpass:chart-result',{detail:result}));
+  if(result.preview)$('chart-watch-actions').hidden=true;
  }
  function applySettings(selection){const s={...options(),...selection};appliedSettings={...s};for(const[id,key]of Object.entries({'chart-fast':'fast_period','chart-slow':'slow_period','chart-breakout':'breakout_period','chart-rsi-period':'rsi_period','chart-rsi-entry':'rsi_entry','chart-bb-period':'bb_period','chart-bb-std':'bb_std','chart-capital':'initial_capital','chart-start':'start_date','chart-end':'end_date'}))$(id).value=s[key]??$(id).defaultValue??'';$('chart-strategy').value=s.strategy;$('chart-fee').value=s.fee_bps/100;$('chart-slip-mode').value=s.slippage_mode;$('chart-slip').value=s.slippage_mode==='ticks'?s.slippage_ticks:s.slippage_bps;$('chart-tick').value=s.tick_size??'';$('chart-train').value=s.train_fraction*100;costMode();rule();}
- $('chart-form').addEventListener('submit',async event=>{event.preventDefault();if(busy)return;busy=true;$('chart-submit').disabled=true;feedback('실제 OHLCV를 조회하고 지표·전략을 계산합니다…');try{const source=$('chart-source').value;
-   if(source==='csv'&&!$('chart-csv').value.trim())throw new Error('내보낸 CSV 파일을 선택하거나 내용을 붙여넣으세요.');
-   const query=$('chart-symbol').value.trim(), port=Number($('chart-port').value), choice=$('chart-tv-timeframe').value;
-   const desktop=source==='tradingview'?await desktopStatus():null;
-   let symbol;
+ // Only the latest selection may render. Desktop requests also run in order
+ // because two simultaneous symbol changes would operate on the same chart tab.
+ function invalidateChart(){
+   clearTimeout(chartTimer);waiting=null;
+   return ++chartVersion;
+ }
+ function showChartState(title,detail,error=false){
+   current=null;hover=-1;
+   $('chart-title').textContent=title;
+   $('chart-provenance').textContent=detail;
+   $('chart-provenance').classList.toggle('error-text',error);
+   $('chart-empty').hidden=false;$('chart-empty').textContent=detail;
+   $('chart-tv-link').hidden=true;
+   $('chart-conclusion').hidden=true;$('backtest-result').hidden=true;
+   for(const id of ['chart-cursor','chart-latest','chart-indicator-period','chart-indicator-values','chart-overlay-values'])
+     $(id).replaceChildren();
+   $('chart-overlay-note').hidden=true;$('chart-indicator-note').hidden=true;
+   drawPrice();drawIndicator();
+   feedback(detail,error);
+ }
+ function scheduleChart({delay=0,save=false,allowOpen=true}={}){
+   const version=invalidateChart(), source=$('chart-source').value;
+   const query=$('chart-symbol').value.trim(),name=sourceLabels[source]||'차트';
+   const title=name+' · '+(query||(source==='tradingview'?'열린 차트':'종목 선택'));
+   if(source==='csv'&&!$('chart-csv').value.trim()){
+     showChartState(title,'TradingView에서 내보낸 CSV 파일을 선택하거나 내용을 붙여넣으세요.');return;
+   }
+   if(composing||(!query&&!(source==='tradingview'&&allowOpen))){
+     showChartState(title,'종목명을 입력하거나 검색 결과에서 선택하세요.');return;
+   }
+   if(!$('chart-form').checkValidity()){
+     showChartState(title,'입력한 종목·주기·연결 및 검증 조건을 확인하세요.',true);return;
+   }
+   const job={version,source,query,title,save,port:Number($('chart-port').value),choice:$('chart-tv-timeframe').value,
+     period:$('chart-period').value,interval:$('chart-interval').value,csv:source==='csv'?$('chart-csv').value:'',
+     options:{...options(),indicators:indicatorGroups}};
+   showChartState(title,name+'에서 '+(query||'열린 종목')+' 차트를 조회하는 중…');
+   chartTimer=setTimeout(()=>loadChart(job),delay);
+ }
+ async function loadChart(job){
+   if(job.version!==chartVersion)return;
+   if(loading.has(job.source)){waiting=job;return;}
+   loading.add(job.source);
+   const live=()=>job.version===chartVersion;
+   try{
+     let symbol;
+     const desk=job.source==='tradingview'?await desktopStatus(job.version):null;
+     if(!live())return;
+     if(desk&&!job.query)symbol=desk.chart.symbol;
+     else if(job.source==='csv'&&/^[A-Z0-9.^=_:!-]+$/i.test(job.query))symbol=job.query.toUpperCase();
+     else{
+       const target=job.source==='csv'?'any':job.source;
+       const item=await window.HyperpassSymbols.field('chart-symbol',target);
+       symbol=target==='yahoo'?item.yahoo:item.id;
+     }
+     if(!live())return;
+     const desktopFields={};
+     if(desk){
+       const interval=job.choice||desk.chart.timeframe;
+       Object.assign(desktopFields,{sync_desktop:true,desktop_interval:({'D':'1D','W':'1W','M':'1M'})[interval]||interval,
+         target_id:desk.target_id});
+     }
+     const result=await window.HyperpassApp.api('/api/charts',{method:'POST',body:{preview:true,source:job.source,symbol,
+       ...desktopFields,period:job.period,interval:job.interval,port:job.port,count:500,csv:job.csv,options:job.options}});
+     if(!live())return;
+     if(job.save && result.preview){
+       await window.HyperpassApp.api('/api/charts/'+result.id+'/save',{method:'POST',body:{}});
+       result.preview=false;
+       if(!live())return;
+     }
+     render(result);
+     feedback(result.preview?'차트를 불러왔습니다. 보관하려면 이 차트를 Second Brain에 저장하세요.':'조회·계산·Second Brain 저장을 마쳤습니다.');
+   }catch(error){if(live())showChartState(job.title,error.message,true);}
+   finally{
+     loading.delete(job.source);
+     if(waiting?.version===chartVersion && waiting.source===job.source){const next=waiting;waiting=null;loadChart(next);}
+   }
+ }
+ async function saveCurrent(){
+   const result=current;
+   if(!result||!result.preview)return result;
+   $('chart-save-preview').disabled=true;
+   try{
+     await window.HyperpassApp.api('/api/charts/'+result.id+'/save',{method:'POST',body:{}});
+     if(current!==result)return null;
+     result.preview=false;storageState(result);
+     window.HyperpassBrain?.refresh();document.dispatchEvent(new CustomEvent('hyperpass:chart-result',{detail:result}));
+     feedback('화면에 표시된 차트를 Second Brain에 저장했습니다.');return result;
+   }catch(error){
+     if(current===result){feedback(error.message,true);$('chart-save-preview').disabled=false;}
+     return null;
+   }
+ }
+ $('chart-save-preview').addEventListener('click',saveCurrent);
+ $('chart-form').addEventListener('submit',event=>{event.preventDefault();scheduleChart({save:true});});
+ $('chart-source').addEventListener('change',()=>{
+   sourceRestoreNote='';const source=$('chart-source').value;
    if(source==='csv'){
-     const text=$('chart-symbol').value.trim();
-     symbol=/^[A-Z0-9.^=_:!-]+$/i.test(text)?text.toUpperCase():(await window.HyperpassSymbols.field('chart-symbol','any')).id;
-   }else if(desktop&&!query){
-     symbol=desktop.chart.symbol;
-   }else{
-     const item=await window.HyperpassSymbols.field('chart-symbol',source==='tradingview'?'tradingview':'yahoo');
-     symbol=source==='tradingview'?item.id:item.yahoo;
+     $('chart-symbol').value='';
+     $('chart-symbol').dispatchEvent(new Event('input'));
    }
-   let desktopFields={};
-   if(desktop){
-     if($('chart-source').value!==source||$('chart-symbol').value.trim()!==query||$('chart-target').value!==desktop.target_id||Number($('chart-port').value)!==port||$('chart-tv-timeframe').value!==choice)
-       throw new Error('조회 중 차트 조건이 바뀌었습니다. 새 조건을 확인하고 다시 조회하세요.');
-     const interval=choice||desktop.chart.timeframe;
-     desktopFields={sync_desktop:true,desktop_interval:({'D':'1D','W':'1W','M':'1M'})[interval]||interval,target_id:desktop.target_id};
-     feedback(symbol+' · '+interval+' Desktop 차트의 실제 봉을 기다리고 있습니다…');
-   }
-   const result=await window.HyperpassApp.api('/api/charts',{method:'POST',body:{source,symbol,...desktopFields,period:$('chart-period').value,interval:$('chart-interval').value,port:Number($('chart-port').value),count:500,csv:$('chart-csv').value,options:{...options(),indicators:indicatorGroups}}});render(result);feedback('조회·계산·Second Brain 저장이 완료됐습니다. AI 해석을 이어갈 수 있습니다.');}catch(error){feedback(error.message,true);}finally{busy=false;$('chart-submit').disabled=false;}});
- $('chart-source').addEventListener('change',()=>{sourceRestoreNote='';updateSource();if($('chart-source').value==='tradingview')desktopSymbol(false).catch(()=>{});});$('chart-strategy').addEventListener('change',rule);$('chart-slip-mode').addEventListener('change',costMode);
- async function desktopStatus(){
+   if(source==='yahoo'&&!$('chart-period').value)$('chart-period').value='2y';
+   if(source!=='tradingview'&&!$('chart-interval').value)$('chart-interval').value='1d';
+   if(source==='tradingview'&&!$('chart-port').value)$('chart-port').value='9222';
+   updateSource();scheduleChart();
+ });
+ $('chart-symbol').addEventListener('compositionstart',()=>{composing=true;scheduleChart({allowOpen:false});});
+ $('chart-symbol').addEventListener('compositionend',()=>{composing=false;scheduleChart({delay:500,allowOpen:false});});
+ $('chart-symbol').addEventListener('input',()=>scheduleChart({delay:500,allowOpen:false}));
+ $('chart-symbol').addEventListener('hyperpass:symbol-picked',()=>scheduleChart());
+ for(const id of ['chart-period','chart-interval','chart-tv-timeframe'])
+   $(id).addEventListener('change',()=>scheduleChart());
+ $('chart-csv').addEventListener('input',()=>scheduleChart({delay:500}));
+ $('chart-strategy').addEventListener('change',rule);$('chart-slip-mode').addEventListener('change',costMode);
+ async function desktopStatus(version){
    const port=Number($('chart-port').value);
    if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Desktop 연결 포트는 1024~65535 사이로 입력하세요.');
    const display=$('chart-desktop-status');
@@ -306,6 +412,7 @@
    try{
      const previous=$('chart-target').value;
      const data=await window.HyperpassApp.api('/api/tradingview/status?'+new URLSearchParams(previous?{port,target_id:previous}:{port}));
+     if(version!==undefined&&version!==chartVersion)throw new Error('차트 선택이 변경되었습니다.');
      const currentTarget=$('chart-target').value;
      const selectedSameTab=!previous&&data.connected&&currentTarget===data.target_id;
      if(Number($('chart-port').value)!==port||(currentTarget!==previous&&!selectedSameTab))throw new Error('선택한 Desktop 연결이 바뀌었습니다. 다시 확인하세요.');
@@ -318,39 +425,47 @@
      const symbol=data.chart.symbol;
      display.textContent='연결됨 · '+symbol+' · '+(data.chart.timeframe||'주기 미확인');
      return data;
-   }catch(error){display.textContent=error.message;throw error;}
+   }catch(error){if(version===undefined||version===chartVersion)display.textContent=error.message;throw error;}
  }
  async function desktopSymbol(use){
-   const data=await desktopStatus();
-   if(use){$('chart-symbol').value=data.chart.symbol;$('chart-symbol').dispatchEvent(new Event('input'));}
+   const version=chartVersion;
+   const data=await desktopStatus(version);
+   if(use && version===chartVersion){$('chart-symbol').value=data.chart.symbol;$('chart-symbol').dispatchEvent(new Event('input'));}
    return data.chart.symbol;
  }
- $('chart-target').addEventListener('change',()=>desktopSymbol($('chart-source').value==='tradingview'&&!$('chart-symbol').value.trim()).catch(()=>{}));
- $('chart-port').addEventListener('change',()=>{$('chart-target').replaceChildren();desktopSymbol(false).catch(()=>{});});
- $('chart-use-desktop').addEventListener('click',()=>desktopSymbol(true).catch(()=>{}));
+ $('chart-target').addEventListener('change',()=>{if($('chart-source').value==='tradingview')scheduleChart();else desktopSymbol(false).catch(()=>{});});
+ $('chart-port').addEventListener('change',()=>{$('chart-target').replaceChildren();if($('chart-source').value==='tradingview')scheduleChart();else desktopSymbol(false).catch(()=>{});});
+ $('chart-use-desktop').addEventListener('click',()=>desktopSymbol(true).catch(error=>feedback(error.message,true)));
  $('chart-desktop-launch').addEventListener('click',async()=>{
    try{const status=await window.HyperpassApp.api('/api/tradingview/launch',{method:'POST',body:{port:Number($('chart-port').value)}});
-     $('chart-desktop-status').textContent=status.message||'Desktop 실행 후 열린 종목 가져오기를 누르세요.';
+     $('chart-desktop-status').textContent=status.message||'Desktop 실행 후 열린 종목 가져오기를 누르세요.';if($('chart-source').value==='tradingview')scheduleChart();
    }catch(error){$('chart-desktop-status').textContent=error.message;}
  });
  $('chart-csv-file').addEventListener('change',async()=>{
    const file=$('chart-csv-file').files[0];if(!file)return;
+   const version=invalidateChart();showChartState('TradingView CSV', '선택한 CSV 파일을 읽고 있습니다…');
    try{
      if(file.size>900000)throw new Error('CSV는 900KB 이하로 가져오세요.');
      const bytes=await file.arrayBuffer();
+     if(version!==chartVersion)return;
      let csv;
      try{csv=new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{csv=new TextDecoder('euc-kr').decode(bytes);}
      $('chart-csv').value=csv;
      const match=/^([A-Z0-9]+)[_:]([A-Z0-9.^=!-]+),\s*(1D|1W|1M|D|W|M)(?=\.|\s|_|$)/i.exec(file.name);
      if(match){$('chart-symbol').value=match[1].toUpperCase()+':'+match[2].toUpperCase();$('chart-symbol').dispatchEvent(new Event('input'));$('chart-interval').value=({D:'1d',W:'1wk',M:'1mo'})[match[3].slice(-1).toUpperCase()];}
+     if(!match){
+       $('chart-symbol').value='';
+       $('chart-symbol').dispatchEvent(new Event('input'));
+     }
      feedback('CSV를 읽었습니다. '+(match?'파일 이름에서 가져온 종목과 주기를 확인하세요.':'파일의 실제 종목명 또는 티커와 주기를 지정하세요.'));
-   }catch(error){$('chart-csv').value='';feedback(error.message,true);}
+     scheduleChart();
+   }catch(error){if(version===chartVersion){$('chart-csv').value='';showChartState('TradingView CSV',error.message,true);}}
  });
  for(const input of document.querySelectorAll('[data-overlay]'))input.addEventListener('change',drawPrice);
  $('chart-overlay-readout').addEventListener('toggle',drawOverlayReadout);
  $('chart-subindicator').addEventListener('change',drawIndicator);for(const id of ['chart-visible','chart-position'])$(id).addEventListener('input',drawPrice);
  $('price-canvas').addEventListener('mousemove',event=>{if(!current)return;const {start,end,k}=chartRange(),box=$('price-canvas').getBoundingClientRect();hover=Math.max(start,Math.min(end-1,start+Math.floor((event.clientX-box.left-12)/(box.width-80)*k)));const b=current.candles[hover];$('chart-cursor').textContent=`${b.timestamp.slice(0,10)}  O ${fmt(b.open)}  H ${fmt(b.high)}  L ${fmt(b.low)}  C ${fmt(b.close)}  V ${fmt(b.volume,0)}`;drawPrice();});
- $('price-canvas').addEventListener('mouseleave',()=>{hover=-1;$('chart-cursor').textContent='';drawPrice();});$('chart-ask').addEventListener('click',()=>{if(current)window.HyperpassApp.useChart(current);});
+ $('price-canvas').addEventListener('mouseleave',()=>{hover=-1;$('chart-cursor').textContent='';drawPrice();});$('chart-ask').addEventListener('click',async()=>{const saved=await saveCurrent();if(saved)window.HyperpassApp.useChart(saved);});
  new ResizeObserver(()=>{if(!host.hidden){drawPrice();if(current?.backtest)drawEquity();}}).observe($('price-canvas'));
  const indexGroups={kr:[['^KS11','코스피'],['^KQ11','코스닥']],us:[['^IXIC','나스닥 종합'],['^GSPC','S&P 500'],['^DJI','다우존스 산업평균']]};
  let indexRequest=0,indexSeries=[];
@@ -395,10 +510,16 @@
  new ResizeObserver(drawMarket).observe($('market-index-curve'));
  window.HyperpassChart={desktopStatus,lastResult:()=>current,settings:options,applySettings,
    openSymbol:async symbol=>{
-     if(busy){feedback('현재 차트 조회가 끝난 뒤 다시 선택하세요.');return;}
      window.HyperpassApp.selectWorkspace('chart');$('chart-source').value='yahoo';sourceRestoreNote='';
      $('chart-symbol').value=symbol;$('chart-symbol').dispatchEvent(new Event('input'));
      if(!$('chart-period').value)$('chart-period').value='1y';if(!$('chart-interval').value)$('chart-interval').value='1d';
-     updateSource();$('chart-form').requestSubmit();},
-   open:async id=>{feedback('저장된 차트 기록을 여는 중…');try{const result=await window.HyperpassApp.api('/api/charts/'+encodeURIComponent(id)+'?view=chart');restoreSource(result);render(result);feedback('저장된 계산 결과와 분석 설정을 복원했습니다. 기록되지 않은 조회 값은 출처 안내에 표시했습니다. 새로 조회하면 별도 기록으로 저장됩니다.');}catch(error){feedback(error.message,true);}}};$('chart-fee').step='any';$('chart-train').step='any';updateSource();costMode();rule();
+     updateSource();scheduleChart();},
+   open:async id=>{
+     const version=invalidateChart();showChartState('저장한 차트','저장된 차트 기록을 여는 중…');
+     try{
+       const result=await window.HyperpassApp.api('/api/charts/'+encodeURIComponent(id)+'?view=chart');
+       if(version!==chartVersion)return;
+       restoreSource(result);render(result,true);feedback('저장된 차트와 분석 설정을 복원했습니다. 종목이나 출처를 바꾸면 새 차트를 자동으로 조회합니다.');
+     }catch(error){if(version===chartVersion)showChartState('저장한 차트',error.message,true);}
+   }};$('chart-fee').step='any';$('chart-train').step='any';updateSource();costMode();rule();
 })();

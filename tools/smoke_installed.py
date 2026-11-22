@@ -178,6 +178,10 @@ def exercise(client, installation, record):
     require('Hyperpass' in client.request('/'), 'Main page failed to load')
     for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css', 'strategy-lab.js', 'strategy-lab.css', 'portfolio-conditions.js', 'pine-batch.js', 'screener.js', 'screener.css', 'select-theme.js', 'watchlist.js', 'watchlist.css'):
         require(bool(client.request('/' + asset)), 'Missing UI asset: ' + asset)
+    guide = client.request('/guide')
+    require('Hyperpass 수강생 가이드' in guide and all('id="'+section+'"' in guide for section in ('install','setup','use','custom')), 'Student guide incomplete')
+    for asset in ('/static/student-guide.css', '/static/student-guide.js'):
+        require(bool(client.request(asset)), 'Student guide asset missing')
     record('startup_and_assets', 'Fresh localhost app loaded all workspace assets with no configured key or selected model.')
 
     font_url = '/fonts/PretendardVariable.woff2'
@@ -314,7 +318,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.7.1-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.7.2-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

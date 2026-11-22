@@ -12,7 +12,7 @@ resource_trees = {'static', 'methods', 'references', 'examples', 'docs', 'proven
 resource_files = [
     (str(path), str(Path(name).parent))
     for name, path in files(project_root)
-    if Path(name).parts[0] in resource_trees or name in {'LICENSE', 'NOTICE'}
+    if Path(name).parts[0] in resource_trees or name in {'LICENSE', 'NOTICE', '수강생-시작가이드.html'}
 ]
 
 

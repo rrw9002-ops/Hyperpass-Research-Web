@@ -189,6 +189,8 @@ class Application:
         self.indicators = IndicatorStudio(self.store)
         from .research_desk import ResearchDesk
         self.desk = ResearchDesk(self.store)
+        self.chart_previews = {}
+        self.preview_lock = threading.Lock()
         self.indicator_generation = threading.Lock()
         self.lock = threading.RLock()
         self.provider = None
@@ -198,6 +200,8 @@ class Application:
         self.active = None
         self.stop_event = threading.Event()
         self.sources = DataSources()
+        from .equity_screen import EquityScreen
+        self.screener = EquityScreen(self.sources)
         self.source_state = {}
         self.configuring = False
 
@@ -338,8 +342,27 @@ class Application:
             pine=''
             result['warnings'].append('이 설정은 Pine 내보내기 범위를 벗어나 스크립트를 만들지 않았습니다. 로컬 계산 결과는 보존합니다.')
         result.update(id=uuid.uuid4().hex,created_at=now(),source_packet=packet,pine_script=pine)
+        if payload.get('preview') is True:
+            # Browsing charts should not create research records. Keep only a small
+            # set of immutable snapshots for explicit saves from open browser tabs.
+            with self.preview_lock:
+                self.chart_previews[result['id']] = result
+                if len(self.chart_previews) > 6:
+                    del self.chart_previews[next(iter(self.chart_previews))]
+            return dict(result, preview=True)
         self.store.put_chart(result)
         return result
+
+    def save_chart_preview(self, chart_id):
+        with self.preview_lock:
+            result = self.chart_previews.get(chart_id)
+            if result is None:
+                if self.store.get_chart(chart_id) is None:
+                    raise ValueError('미리보기가 만료되었습니다. 차트를 다시 조회한 뒤 저장하세요.')
+            else:
+                self.store.put_chart(result)
+                del self.chart_previews[chart_id]
+        return {'id':chart_id, 'saved':True}
 
     def start(self, payload):
         question = payload.get('question','')
@@ -548,10 +571,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, universe_options(market))
             except (ValueError, OSError) as exc:
                 return self.send(400, {'error': str(exc)})
-        if path == '/api/screener':
-            from .equity_screen import snapshot
+        if path in ('/api/screener','/api/screener/status'):
+            args = parse_qs(urlsplit(self.path).query)
+            market = args.get('market',[''])[0]
             try:
-                return self.send(200, snapshot(parse_qs(urlsplit(self.path).query).get('market', [''])[0]))
+                if path.endswith('/status'):
+                    return self.send(200, self.app.screener.status(market))
+                return self.send(200, self.app.screener.snapshot(market, refresh=args.get('refresh')==['1'], extra=args.get('extra')==['1']))
             except (ValueError, OSError) as exc:
                 return self.send(400, {'error':str(exc)})
         pine_report = re.fullmatch(r'/api/backtests/([a-f0-9]{32})/pine-reports/([0-9]{1,5})', path)
@@ -641,7 +667,9 @@ class Handler(BaseHTTPRequestHandler):
                 from .research_desk import report_symbols
                 run['watch_candidates'] = report_symbols(run)
             return self.send(200,run)
-        static={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
+        if path == '/guide':
+            return self.send(200,(self.app.root/'수강생-시작가이드.html').read_bytes(),'text/html; charset=utf-8')
+        static={'/static/student-guide.css':'student-guide.css','/static/student-guide.js':'student-guide.js','/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
         static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js'})
         static.update({f'/{name}':name for name in ('strategy-lab.js','strategy-lab.css','portfolio-conditions.js','pine-batch.js','screener.js','screener.css','select-theme.js','watchlist.js','watchlist.css')})
         static.update({'/fonts/PretendardVariable.woff2': 'fonts/PretendardVariable.woff2',
@@ -668,6 +696,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(413, {'error':'요청 크기를 확인해 주세요.'})
             payload=json.loads(self.rfile.read(length))
             if not isinstance(payload,dict): raise ValueError('입력 형식 오류')
+            if path == '/api/screener/kis-quotes':
+                return self.send(200, self.app.screener.quotes(payload.get('symbols')))
             if path == '/api/backtests/preview':
                 if payload.get('engine') == 'pine':
                     from .pine_batch import validate as preview
@@ -706,6 +736,9 @@ class Handler(BaseHTTPRequestHandler):
             if path=='/api/tradingview/launch':
                 from .tradingview_launcher import launch
                 return self.send(200,launch(payload.get('port',9222)))
+            save_chart = re.fullmatch(r'/api/charts/([a-f0-9]{32})/save',path)
+            if save_chart:
+                return self.send(200,self.app.save_chart_preview(save_chart[1]))
             if path=='/api/charts':
                 return self.send(201,self.app.chart(payload))
             discover=re.fullmatch(r'/api/ai/(openai|anthropic|gemini)/models',path)
@@ -755,6 +788,7 @@ class Handler(BaseHTTPRequestHandler):
                     if match[2]:
                         self.app.sources.disconnect(name)
                         self.app.source_state.pop(name,None)
+                        if name == 'kis': self.app.screener.invalidate_kis()
                         return self.send(200,{'disconnected':True})
                     config=payload.get('config',{})
                     if not isinstance(config,dict): raise ValueError('연결 정보를 확인해 주세요.')
@@ -765,8 +799,10 @@ class Handler(BaseHTTPRequestHandler):
                     except Exception as exc:
                         self.app.sources.disconnect(name)
                         self.app.source_state.pop(name,None)
+                        if name == 'kis': self.app.screener.invalidate_kis()
                         raise ValueError(str(exc) if isinstance(exc,DataSourceError) else '연결 검사 실패. 키·종목·사용 권한·서비스 상태를 확인해 주세요.')
                     self.app.source_state[name]={'symbol':symbol,'checked_at':now()}
+                    if name == 'kis': self.app.screener.invalidate_kis()
                 return self.send(200,{'source':name,'result':result})
             return self.send(404,{'error':'경로를 찾을 수 없습니다.'})
         except (ValueError,ProviderError) as exc:

@@ -23,7 +23,7 @@ def fixture(market):
                          price=120+i, market_cap=1e10-i, turnover=1e8, per=10 if i!=1 else None,
                          pbr=2, roe=i, margin=10, debt=0.4, volume=500, income=None,
                          price_date='2026-11-20', fiscal_date='2026-09-30'))
-    return dict(rows=rows, market=market, as_of='2026-11-21T12:00:00Z', listed_count=len(rows),
+    return dict(rows=rows, market=market,source='한국투자증권 KIS' if market=='KR' else 'Yahoo Finance',quote_mode='master' if market=='KR' else 'api', as_of='2026-11-21T12:00:00Z', listed_count=len(rows),
                 exchanges={'KOSPI':'코스피'} if market=='KR' else {'NASDAQ':'나스닥'})
 
 
@@ -34,7 +34,7 @@ class ScreenerStudioBrowserTest(unittest.TestCase):
         with ExitStack() as stack:
             root=Path(stack.enter_context(tempfile.TemporaryDirectory()))
             app=Application(root/'data',team_dir=root/'team')
-            stack.enter_context(patch('hyperpass.equity_screen.snapshot', side_effect=fixture))
+            stack.enter_context(patch.object(app.screener, 'snapshot', side_effect=lambda market, **_: fixture(market)))
             server=serve(app,0)
             thread=threading.Thread(target=server.serve_forever,daemon=True); thread.start()
             stack.callback(thread.join); stack.callback(server.server_close); stack.callback(server.shutdown)
@@ -46,6 +46,8 @@ class ScreenerStudioBrowserTest(unittest.TestCase):
             page.goto(f'http://127.0.0.1:{server.server_port}')
             page.locator('nav [data-workspace="screener"]').click()
             expect(page.locator('#sc-count')).to_have_text('44 종목')
+            expect(page.locator('#sc-provider')).to_have_text('한국투자증권 KIS')
+            expect(page.locator('#sc-connect')).to_be_visible()
             expect(page.locator('#sc-rows tr')).to_have_count(40)
             page.locator('#sc-presets').get_by_text('저평가',exact=True).click()
             expect(page.locator('#sc-count')).to_have_text('43 종목')
@@ -70,6 +72,7 @@ class ScreenerStudioBrowserTest(unittest.TestCase):
             page.keyboard.press('Escape')
             page.locator('#sc-market').select_option('US')
             expect(page.locator('#sc-rows')).to_contain_text('애플')
+            expect(page.locator('#sc-provider')).to_have_text('Yahoo Finance')
             expect(page.locator('#sc-rows')).to_contain_text('AAPL · NASDAQ')
             page.locator('#sc-rows input').first.check()
             page.locator('#sc-backtest').click()

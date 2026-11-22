@@ -53,7 +53,7 @@ def _get(url, limit):
     return raw
 
 
-def _us_listings(content, nasdaq=False):
+def _us_listings(content, nasdaq=False, *, screen_candidates=False):
     rows = csv.DictReader(io.StringIO(content.decode('utf-8-sig')), delimiter='|')
     other = {'N':'NYSE','A':'NYSEAMERICAN','P':'NYSEARCA','Z':'CBOE','V':'IEX','F':'TXSE','M':'NYSETEXAS'}
     for row in rows:
@@ -61,9 +61,12 @@ def _us_listings(content, nasdaq=False):
             continue
         raw = row.get('Symbol') or row.get('ACT Symbol') or ''
         name = (row.get('Security Name') or '').strip()
-        if not re.search(r'common (stock|shares?)|ordinary shares?|depositary (shares?|receipts?)|\bADR\b|capital stock|subordinate voting shares?', name, re.I):
+        # Screener candidates are subsequently checked against Yahoo quoteType and primary exchange.
+        if not screen_candidates and not re.search(r'common (stock|shares?)|ordinary shares?|depositary (shares?|receipts?)|\bADR\b|capital stock|subordinate voting shares?', name, re.I):
             continue
         if re.search(r'\bwarrants?\b|\bpreferred\b|\bunits?\b|\brights? to\b', name, re.I):
+            continue
+        if screen_candidates and re.search(r'\b(?:notes?|bonds?|debentures?|rights?|ETNs?|ETFs?)\b', name, re.I):
             continue
         if re.fullmatch(r'[A-Z]{1,6}(?:[./-][A-Z]{1,2})?', raw):
             yield raw.replace('.', '-').replace('/', '-'), name, 'NASDAQ' if nasdaq else other.get(row.get('Exchange'))

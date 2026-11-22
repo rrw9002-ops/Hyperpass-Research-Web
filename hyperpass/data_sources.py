@@ -81,6 +81,8 @@ class DataSources:
         self._configs = {}
         self._tokens = {}
         self._lock = threading.RLock()
+        self._kis_quote_lock = threading.Lock()
+        self._kis_next_quote = 0.0
 
     def configure(self, name, config):
         if name not in PROVIDERS or not isinstance(config, dict):
@@ -206,26 +208,54 @@ class DataSources:
             return value
         return clean(result)
 
-    def _fetch_kis(self, symbol, cfg):
-        if not re.fullmatch(r"\d{6}", symbol):
-            raise DataSourceError("KIS 국내주식 조회에는 005930 같은 6자리 종목 코드를 사용하세요.")
+    def kis_quotes(self, symbols, *, detailed=False):
+        """Read one official KRX quote or up to 30 quotes with the session's KIS registration."""
+        if (not isinstance(symbols, list) or not 1 <= len(symbols) <= (1 if detailed else 30)
+                or any(not isinstance(code, str) or not re.fullmatch(r"[0-9][0-9A-Z]{5}", code) for code in symbols)):
+            raise DataSourceError("KIS 스크리너에 사용할 국내 종목 코드를 확인하세요.")
         base = "https://openapi.koreainvestment.com:9443"
-        with self._lock:
-            token, expiry = self._tokens.get("kis", ("", 0))
-            if not token or time.monotonic() >= expiry:
-                result = self._call("POST", base + "/oauth2/tokenP", {"Content-Type": "application/json"},
-                                    {"grant_type": "client_credentials", "appkey": cfg["app_key"], "appsecret": cfg["app_secret"]})
-                token = result.get("access_token")
-                if not isinstance(token, str) or not token or "\n" in token or "\r" in token:
-                    raise DataSourceError("KIS 토큰 발급에 실패했습니다. App Key와 Secret을 확인하세요.")
-                lifetime = max(1, min(int(result.get("expires_in", 3600)), 86400) - 60)
-                self._tokens["kis"] = (token, time.monotonic() + lifetime)
+        tr = "FHKST01010100" if detailed else "FHKST11300006"
+        resource = "inquire-price" if detailed else "intstock-multprice"
+        params = {}
+        for index, code in enumerate(symbols, 1):
+            suffix = "" if detailed else "_" + str(index)
+            params["FID_COND_MRKT_DIV_CODE" + suffix] = "J"
+            params["FID_INPUT_ISCD" + suffix] = code
+        url = base + "/uapi/domestic-stock/v1/quotations/" + resource + "?" + urllib.parse.urlencode(params)
+        # Serialize quote traffic across charts and screeners, including repeated refreshes.
+        with self._kis_quote_lock:
+            for attempt in range(2):
+                wait = self._kis_next_quote - time.monotonic()
+                if wait > 0:
+                    time.sleep(wait)
+                with self._lock:
+                    cfg = self._configs.get("kis")
+                    if not cfg:
+                        raise DataSourceError("데이터 연결에서 한국투자증권 KIS App Key와 Secret을 등록하세요.")
+                    token, expiry = self._tokens.get("kis", ("", 0))
+                    if not token or time.monotonic() >= expiry:
+                        result = self._call("POST", base + "/oauth2/tokenP", {"Content-Type":"application/json"},
+                                            {"grant_type":"client_credentials","appkey":cfg["app_key"],"appsecret":cfg["app_secret"]})
+                        token = result.get("access_token")
+                        if not isinstance(token, str) or not token or "\n" in token or "\r" in token:
+                            raise DataSourceError("KIS 토큰 발급에 실패했습니다. App Key와 Secret을 확인하세요.")
+                        lifetime = max(1, min(int(result.get("expires_in", 3600)), 86400) - 60)
+                        self._tokens["kis"] = (token, time.monotonic() + lifetime)
+                    headers = {"authorization":"Bearer " + token, "appkey":cfg["app_key"], "appsecret":cfg["app_secret"],
+                               "tr_id":tr, "custtype":"P"}
+                self._kis_next_quote = time.monotonic() + 0.15
+                result = self._call("GET", url, headers)
+                if result.get("msg_cd") == "EGW00201" and not attempt:
+                    self._kis_next_quote = time.monotonic() + 1.1
+                    continue
+                if str(result.get("rt_cd")) != "0" or not isinstance(result.get("output"), dict if detailed else list):
+                    raise DataSourceError("KIS 시세 조회가 거절되었습니다. 인증·시장 이용 권한·호출 한도를 확인하세요.")
+                return result["output"]
+
+    def _fetch_kis(self, symbol, cfg):
+        row = self.kis_quotes([symbol], detailed=True)
+        base = "https://openapi.koreainvestment.com:9443"
         path = "/uapi/domestic-stock/v1/quotations/inquire-price"
-        result = self._call("GET", base + path + "?" + urllib.parse.urlencode({"FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": symbol}),
-                            {"authorization": "Bearer " + token, "appkey": cfg["app_key"], "appsecret": cfg["app_secret"], "tr_id": "FHKST01010100", "custtype": "P"})
-        if str(result.get("rt_cd")) != "0" or not isinstance(result.get("output"), dict):
-            raise DataSourceError("KIS 시세 조회가 거절되었습니다. 인증·시장 이용 권한·호출 한도를 확인하세요.")
-        row = result["output"]
         fields = ("stck_prpr", "prdy_vrss", "prdy_ctrt", "acml_vol", "stck_oprc", "stck_hgpr", "stck_lwpr", "hts_kor_isnm", "stck_bsop_date", "stck_cntg_hour")
         return {"records": [{key: row[key] for key in fields if key in row}], "as_of": "unknown", "currency": "KRW",
                 "warning": "현재가 조회 응답입니다. 수신 시각은 거래소 체결 시각과 다릅니다. 계좌·주문 API는 사용하지 않습니다.", "source_url": base + path}

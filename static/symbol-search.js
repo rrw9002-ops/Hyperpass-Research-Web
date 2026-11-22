@@ -60,10 +60,11 @@
     });
     fields.set(id,async target=>{
       const text=input.value.trim(), item=selectedItem && text===selectedItem.name ? selectedItem : null;
+      const version=++request;
+      clearTimeout(timer);
       const result=await resolve(item ? item.id : text,target);
       if(input.value.trim()!==text) throw new Error("종목이 변경되었습니다. 다시 조회하세요.");
-      ++request;
-      clearTimeout(timer);
+      if(version!==request)return result;
       matches.replaceChildren();
       status.textContent=(item?.name || result.name) + " · " + (target==="yahoo" ? result.yahoo : result.id || result.yahoo);
       return result;

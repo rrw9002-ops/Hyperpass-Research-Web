@@ -25,12 +25,31 @@ class EquityScreenTest(unittest.TestCase):
         self.assertEqual(item['per'],0)
         self.assertEqual(item['price_date'],'2026-11-20')
 
-    def test_cache_labels_old_values_and_rejects_unavailable_market(self):
-        with patch.dict(screen._CACHE, {}, clear=True), patch.object(screen, '_fetch', side_effect=[
-                {'market':'US','rows':[]},OSError()]) as fetch, patch.object(screen.time, 'monotonic',side_effect=[1,2,120]):
-            first = screen.snapshot('US')
-            self.assertIs(screen.snapshot('US'),first)
-            self.assertIn('warning',screen.snapshot('US'))
-            self.assertEqual(fetch.call_count,2)
+    def test_refresh_contacts_provider_and_labels_outage(self):
+        service = screen.EquityScreen(None)
+        with patch('hyperpass.screen_yahoo.fetch_snapshot', side_effect=[
+                {'market':'US','rows':[],'as_of':'original'},
+                {'market':'US','rows':[],'as_of':'reloaded'},
+                OSError()]) as fetch:
+            self.assertEqual(service.snapshot('US')['cache_status'], 'fresh')
+            self.assertEqual(service.snapshot('US')['cache_status'], 'cached')
+            self.assertEqual(service.snapshot('US', refresh=True)['as_of'], 'reloaded')
+            stale = service.snapshot('US', refresh=True)
+            self.assertEqual((stale['cache_status'],stale['as_of']), ('stale','reloaded'))
+            self.assertIn('Yahoo',stale['warning'])
+            self.assertEqual(fetch.call_count,3)
             with self.assertRaises(ValueError):
-                screen.snapshot('XX')
+                service.snapshot('XX')
+
+    def test_missing_financials_only_and_session_invalidation(self):
+        service = screen.EquityScreen(None)
+        primary = {'market':'KR','rows':[{'id':'KRX:005930','price':120,'per':None,'roe':5}]}
+        extra = {'rows':[{'id':'KRX:005930','price':999,'per':10,'roe':99}]}
+        with patch('hyperpass.screen_kis.fetch_snapshot', return_value=primary) as fetch, patch.object(screen, '_fetch', return_value=extra) as supplement:
+            self.assertIsNone(service.snapshot('KR')['rows'][0]['per'])
+            supplement.assert_not_called()
+            row = service.snapshot('KR',extra=True)['rows'][0]
+            self.assertEqual((row['price'],row['per'],row['roe'],row['supplement_fields']), (120,10,5,['per']))
+            service.invalidate_kis()
+            self.assertIsNone(service.snapshot('KR')['rows'][0]['per'])
+            self.assertEqual(fetch.call_count,3)

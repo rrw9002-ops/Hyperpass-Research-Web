@@ -241,3 +241,5 @@ select option, select optgroup { background: var(--panel); color: var(--text); }
 .hp-select-list {position:fixed;z-index:10000;overflow:auto;overscroll-behavior:contain;background:#211e19;color:#eee5d5;border:1px solid #685039;border-radius:9px;padding:4px;box-shadow:0 8px 24px #0008}
 .hp-select-list [role=option]{cursor:default;padding:7px 10px;border-radius:5px;font:inherit;overflow-wrap:anywhere}.hp-select-list [aria-selected=true],.hp-select-list [data-focus]{background:#563a24;color:#fff2da}.hp-select-list [aria-disabled=true]{color:#a79d8e}.hp-select-list small{display:block;padding:4px;color:#bba88c}
 @media(forced-colors:active){select,select::picker(select),select option{forced-color-adjust:auto}}
+
+.guide-link{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;white-space:nowrap}

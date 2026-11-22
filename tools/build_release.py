@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from hyperpass.team_config import DOCUMENTS
 
-TOP_FILES = {"app.py", "README.md", "LICENSE", "NOTICE", "Start-Windows.cmd", "Start-Mac.command", "Hyperpass-Research-Web.spec"}
+TOP_FILES = {"수강생-시작가이드.html", "app.py", "README.md", "LICENSE", "NOTICE", "Start-Windows.cmd", "Start-Mac.command", "Hyperpass-Research-Web.spec"}
 TEAM_FILES = {"team/" + path for path in DOCUMENTS}
 FONT_FILES = {"static/fonts/PretendardVariable.woff2", "static/fonts/OFL.txt"}
 TREE_SUFFIXES = {
