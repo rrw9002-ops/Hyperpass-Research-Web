@@ -1,4 +1,4 @@
-# 검증 범위 — v0.6.0-preview
+# 검증 범위 — v0.6.0-preview.1
 
 이 앱은 매매를 제거한 별도 웹 구현입니다. 원본의 인증 서비스와 동일한 제품이라고
 표현하지 않습니다. 모델 실행기는 OpenAI Responses, Anthropic Claude, Google Gemini
@@ -7,7 +7,7 @@ Risk/Judgment의 독립 검토와 역할 책임 분리를 유지합니다.
 
 ## v0.6 전략 연구실과 관심종목
 
-종목명과 티커, 다섯 지수, 거래비용을 포함한 시장 백테스트와 저장된 전략 재사용을 점검합니다. 플랫폼별 실행 파일·압축 해제본의 결과와 SHA-256은 [이번 버전의 검증 기록](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.6.0-preview)에 제공합니다.
+종목명과 티커, 다섯 지수, 거래비용을 포함한 시장 백테스트와 저장된 전략 재사용을 점검합니다. 플랫폼별 실행 파일·압축 해제본의 결과와 SHA-256은 [이번 버전의 검증 기록](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.6.0-preview.1)에 제공합니다.
 
 ## v0.5.3 글래스 테마
 

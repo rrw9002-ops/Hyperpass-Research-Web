@@ -419,14 +419,6 @@ def analyze_chart(packet, options=None):
             'indicators':selected, 'settings':settings, 'backtest':backtest,
             'warnings':warnings, 'evidence_summary':summary}
 
-def market_index(sources, symbol):
-    """Three months of real dated index closes for the separate market overview."""
-    from .symbol_search import INDICES
-    names = {yahoo: name for _, name, _, yahoo in INDICES}
-    if symbol not in names:
-        raise ChartLabError("조회할 국내·미국 지수를 선택하세요.")
-    packet = sources.chart_history(symbol, "3mo", "1d")
-    bars, _ = normalize_candles(packet)
-    return {"symbol": symbol, "name": names[symbol], "provider": "Yahoo Finance",
-            "source_url": packet["source_url"], "retrieved_at": packet["retrieved_at"],
-            "series": [{"date": b["timestamp"][:10], "close": b["close"]} for b in bars]}
+def market_index(sources, symbol, cache_dir=None):
+    from .index_history import get_index
+    return get_index(sources, symbol, cache_dir)

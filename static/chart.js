@@ -144,7 +144,6 @@
  $('price-canvas').addEventListener('mouseleave',()=>{hover=-1;drawPrice();});$('chart-ask').addEventListener('click',()=>{if(current)window.HyperpassApp.useChart(current);});
  new ResizeObserver(()=>{if(!host.hidden){drawPrice();if(current?.backtest)drawEquity();}}).observe($('price-canvas'));
  const indexGroups={kr:[['^KS11','코스피'],['^KQ11','코스닥']],us:[['^IXIC','나스닥 종합'],['^GSPC','S&P 500'],['^DJI','다우존스 산업평균']]};
- const indexCache=new Map();
  let indexRequest=0,indexSeries=[];
  function drawMarket(){
    if(!indexSeries.length||host.hidden)return;
@@ -160,15 +159,20 @@
    const version=++indexRequest, select=$('market-index'),symbol=select.value,info=$('market-index-info');
    indexSeries=[];$('market-index-curve').hidden=true;$('market-index-retry').hidden=true;info.textContent=select.selectedOptions[0].text+' 조회 중…';
    try{
-     let saved=indexCache.get(symbol);
-     if(!saved||Date.now()-saved.at>300000){
-       const data=await window.HyperpassApp.api('/api/market-index?symbol='+encodeURIComponent(symbol));
-       saved={data,at:Date.now()};indexCache.set(symbol,saved);
-     }
+     const data=await window.HyperpassApp.api('/api/market-index?symbol='+encodeURIComponent(symbol));
      if(version!==indexRequest)return;
-     const data=saved.data;indexSeries=data.series;
+     indexSeries=data.series;
      const last=indexSeries.at(-1), previous=indexSeries.at(-2), change=100*(last.close/previous.close-1);
-     info.textContent=data.name+' · '+fmt(last.close)+' pt · 전 거래일 대비 '+pct(change)+' · '+last.date+' · '+data.provider;
+     info.textContent=data.name+' · '+fmt(last.close)+' pt · 전 거래일 대비 '+pct(change)+' · 관측일 '+data.as_of+' · ';
+     const link=new URL(data.source_url);
+     const trust=['query1.finance.yahoo.com','query2.finance.yahoo.com','stock.naver.com','fred.stlouisfed.org'];
+     if(link.protocol==='https:'&&trust.includes(link.hostname)){
+       const a=node('a','text-button',data.provider+' ↗');a.href=link.href;a.target='_blank';a.rel='noopener noreferrer';info.append(a);
+     }else info.append(document.createTextNode(data.provider));
+     const label=data.cache_status==='stale_cache'?'마지막 저장값':data.cache_status==='fresh_cache'?'최근 저장값':'조회';
+     const when=new Date(data.retrieved_at).toLocaleString('ko-KR');
+     info.append(document.createTextNode(' · '+label+' '+when+(data.notice?' · '+data.notice:'')));
+     $('market-index-retry').hidden=data.cache_status!=='stale_cache';
      $('market-index-curve').setAttribute('aria-label',data.name+' 최근 3개월 종가 추이');$('market-index-curve').hidden=false;drawMarket();
    }catch(error){if(version===indexRequest){info.textContent='지수 조회 실패 · '+error.message;$('market-index-retry').hidden=false;}}
  }

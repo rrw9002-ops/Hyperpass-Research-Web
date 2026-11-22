@@ -157,10 +157,21 @@
     for (const key of Object.keys(numericField)) values[key] = Number($("bt-param-"+key).value);
     return values;
   }
+  function sourceLinks(host, rule) {
+    host.replaceChildren();
+    if (!rule) return;
+    host.append(document.createTextNode(rule.source + " · "));
+    const base = "https://github.com/rrw9002-ops/Hyperpass-Research-Web/blob/v0.6.0-preview.1/";
+    for (const [label,path] of [["강의 예제 설명","docs/CHART-LAB.md"],["진입·청산 코드","hyperpass/chart_lab.py#L229"]]) {
+      const link=node("a",label,"text-button");
+      link.href=base+path; link.target="_blank"; link.rel="noopener noreferrer";
+      host.append(link,document.createTextNode(" "));
+    }
+  }
   function showRule() {
     const values = settings(), rule = rules[values.strategy];
     $("bt-rule-copy").textContent = rule.detail(values);
-    $("bt-rule-source").textContent = rule.source;
+    sourceLinks($("bt-rule-source"), rule);
     const visible = values.strategy === "mean_reversion" ? ["bb_period","bb_std","rsi_period","rsi_entry"] :
       values.strategy === "sma_cross" ? ["fast_period","slow_period"] : ["fast_period","slow_period","breakout_period"];
     for (const field of $("bt-params").children) field.hidden = !visible.includes(field.dataset.setting);
@@ -462,7 +473,7 @@
   }
   function updateChartSource() {
     const r=rules[$("chart-strategy").value];
-    $("bt-chart-source").textContent=r ? "규칙 출처 · "+r.source : "";
+    sourceLinks($("bt-chart-source"),r);
   }
   function onOpen() {
     if(host.hidden && $("workspace-chart").hidden) return;

@@ -514,7 +514,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 if path == '/api/market-index':
                     from .chart_lab import market_index
-                    return self.send(200,market_index(self.app.sources,query.get('symbol',[''])[0]))
+                    return self.send(200,market_index(self.app.sources,query.get('symbol',[''])[0],
+                                                      cache_dir=self.app.store.path.parent/'market-index-cache'))
                 from .symbol_search import resolve_symbol
                 return self.send(200,resolve_symbol(query.get('q',[''])[0],query.get('target',['any'])[0]))
             except (ValueError,OSError) as exc:
