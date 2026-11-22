@@ -242,6 +242,17 @@ def exercise(client, installation, record):
     require(client.request('/api/charts/' + chart['id'] + '/pine').startswith('//@version=6'), 'Pine export missing')
     record('csv_chart', '120 synthetic OHLCV rows imported, local test computed, chart JSON and Pine exported.')
 
+    view = client.request('/api/charts/' + chart['id'] + '?view=chart')
+    series_names = ('wma','donchian_upper','donchian_lower','keltner_upper','keltner_lower',
+                    'stoch_k','stoch_d','adx','di_plus','di_minus','cci','williams_r','roc','obv','mfi','cmf')
+    for name in series_names:
+        values = view['indicators'][name]
+        require(len(values) == len(chart['candles']) and math.isfinite(values[-1]),
+                'Supplementary indicator is missing from the installed chart: ' + name)
+    require(view['candles'] == chart['candles'] and view['backtest'] == chart['backtest'],
+            'Loading display indicators altered the experiment')
+    record('chart_indicators', 'Verified supplementary price, momentum, trend and volume series on the installed chart.')
+
     started = client.request('/api/runs', {'question': '설치 점검용 고정 데모입니다. 실제 시장 분석이 아닙니다.',
                              'mode': 'demo', 'target_role': 'technical-analyst', 'max_calls': 12,
                              'web_search': False}, expected=202)
@@ -290,7 +301,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.6.0-preview.1', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.6.1-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

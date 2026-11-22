@@ -161,8 +161,8 @@
     host.replaceChildren();
     if (!rule) return;
     host.append(document.createTextNode(rule.source + " · "));
-    const base = "https://github.com/rrw9002-ops/Hyperpass-Research-Web/blob/v0.6.0-preview.1/";
-    for (const [label,path] of [["강의 예제 설명","docs/CHART-LAB.md"],["진입·청산 코드","hyperpass/chart_lab.py#L229"]]) {
+    const base = "https://github.com/rrw9002-ops/Hyperpass-Research-Web/blob/v0.6.1-preview/";
+    for (const [label,path] of [["강의 예제 설명","docs/CHART-LAB.md"],["진입·청산 코드","hyperpass/chart_lab.py#L226"]]) {
       const link=node("a",label,"text-button");
       link.href=base+path; link.target="_blank"; link.rel="noopener noreferrer";
       host.append(link,document.createTextNode(" "));

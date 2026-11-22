@@ -78,6 +78,28 @@ class WorkspaceHTTPTests(unittest.TestCase):
             time.sleep(.01)
         self.fail('Research request did not finish')
 
+    def test_expanded_chart_view_derives_legacy_series_without_changing_saved_experiment(self):
+        _, _, created = self.create_chart()
+        old = copy.deepcopy(created)
+        old['id'] = 'd' * 32
+        old['settings']['indicators'] = ['rsi']
+        old['indicators'] = {'rsi': old['indicators']['rsi']}
+        old['evidence_summary']['latest_indicators'] = {'rsi': old['indicators']['rsi'][-1]}
+        self.app.store.put_chart(old)
+        url = '/api/charts/' + old['id']
+        with patch.object(self.app.sources, 'chart_history', side_effect=AssertionError('Unexpected quote request')):
+            status, _, expanded = self.request(url + '?view=chart')
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(len(expanded['indicators']), 29)
+        self.assertEqual(expanded['indicators']['rsi'], old['indicators']['rsi'])
+        for name, series in expanded['indicators'].items():
+            self.assertEqual(len(series), len(old['candles']))
+            self.assertEqual(series[-1], expanded['evidence_summary']['latest_indicators'][name])
+        for key in ('id','settings','candles','backtest','source_packet','created_at','provenance'):
+            self.assertEqual(expanded[key], old[key])
+        self.assertEqual(self.request(url + '/export')[2], old)
+        self.assertEqual(self.app.store.get_chart(old['id']), old)
+
     def test_chart_is_saved_and_retrievable_with_source_settings_and_exports(self):
         source,options,created=self.create_chart()
         status,_,loaded=self.request('/api/charts/'+created['id'])

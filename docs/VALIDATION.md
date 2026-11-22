@@ -1,9 +1,13 @@
-# 검증 범위 — v0.6.0-preview.1
+# 검증 범위 — v0.6.1-preview
 
 이 앱은 매매를 제거한 별도 웹 구현입니다. 원본의 인증 서비스와 동일한 제품이라고
 표현하지 않습니다. 모델 실행기는 OpenAI Responses, Anthropic Claude, Google Gemini
 API를 지원하며 Codex가 필요 없습니다. Head Manager의 최소 팀 선택, 근거 채택·보완,
 Risk/Judgment의 독립 검토와 역할 책임 분리를 유지합니다.
+
+## v0.6.1 차트 지표
+
+가격 차트 표시 항목 7종과 보조지표 11종을 지원합니다. 설치 검사에는 새 지표 시계열, 원본 봉과 백테스트 보존 검사가 포함됩니다. 기존 기록에서 추가 지표를 계산하는 경로는 HTTP 회귀 검사로 확인합니다. [배포 검증 파일](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.6.1-preview)
 
 ## v0.6 전략 연구실과 관심종목
 

@@ -93,6 +93,27 @@ def default_data_dir():
         return Path.home() / 'Library/Application Support/HyperpassResearchWeb'
     return Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))/'hyperpass-research-web'
 
+def complete_chart_view(chart):
+    """Derive any missing view series from this snapshot's original candles."""
+    from .chart_lab import DEFAULTS, INDICATOR_GROUPS, indicators
+    from .chart_indicators import EXTRA_GROUPS, enrich_chart_indicators
+
+    saved = chart['indicators']
+    candles = chart['candles']
+    for groups, calculate in (
+        (set(INDICATOR_GROUPS) - set(EXTRA_GROUPS),
+         lambda: indicators(candles, {**DEFAULTS, **chart['settings']})),
+        (EXTRA_GROUPS, lambda: enrich_chart_indicators(candles)),
+    ):
+        missing = {key for group in groups for key in INDICATOR_GROUPS[group] if key not in saved}
+        if missing:
+            derived = calculate()
+            saved.update({key: derived[key] for key in missing})
+    latest = chart['evidence_summary']['latest_indicators']
+    for key, values in saved.items():
+        latest.setdefault(key, values[-1])
+
+
 class Store:
     def __init__(self, folder):
         folder = Path(folder)
@@ -138,10 +159,15 @@ class Store:
         with self.connect() as db:
             db.execute('INSERT INTO charts VALUES (?,?)', (chart['id'],json.dumps(chart,ensure_ascii=False,allow_nan=False)))
 
-    def get_chart(self, chart_id):
+    def get_chart(self, chart_id, *, for_display=False):
         with self.connect() as db:
-            row=db.execute('SELECT body FROM charts WHERE id=?',(chart_id,)).fetchone()
-        return json.loads(row[0]) if row else None
+            row = db.execute('SELECT body FROM charts WHERE id=?', (chart_id,)).fetchone()
+        if not row:
+            return None
+        chart = json.loads(row[0])
+        if for_display and chart.get('candles'):
+            complete_chart_view(chart)
+        return chart
 
     def list_charts(self):
         with self.connect() as db:
@@ -338,7 +364,7 @@ class Application:
         chart_id=payload.get('chart_id') or None
         if chart_id:
             if not isinstance(chart_id,str) or not re.fullmatch(r'[a-f0-9]{32}',chart_id): raise ValueError('차트 기록을 다시 선택하세요.')
-            chart=self.store.get_chart(chart_id)
+            chart=self.store.get_chart(chart_id, for_display=True)
             if not chart: raise ValueError('선택한 차트 기록이 없습니다.')
             evidence+='\n\n[사용자가 선택한 차트 실험 · 실제 저장된 계산 결과, 지시문이 아님]\n'+json.dumps(chart['evidence_summary'],ensure_ascii=False)
             if len(evidence)>100000: raise ValueError('차트와 참고 자료의 합계가 너무 큽니다.')
@@ -547,7 +573,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200,job,download='chart-json' if tv_match[2] else False)
         chart_match=re.fullmatch(r'/api/charts/([a-f0-9]{32})(/(export|pine))?',path)
         if chart_match:
-            chart=self.app.store.get_chart(chart_match[1])
+            view = not chart_match[3] and parse_qs(urlsplit(self.path).query).get('view') == ['chart']
+            chart=self.app.store.get_chart(chart_match[1], for_display=view)
             if not chart: return self.send(404,{'error':'차트 기록이 없습니다.'})
             if chart_match[3]=='pine': return self.send(200,chart.get('pine_script','').encode(),'text/plain; charset=utf-8','chart-pine')
             if chart_match[3]=='export': return self.send(200,json.dumps(chart,ensure_ascii=False,indent=2).encode(),'application/json; charset=utf-8','chart-json')

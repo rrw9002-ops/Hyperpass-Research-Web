@@ -28,3 +28,79 @@
 #market-index-info { margin:8px 0 4px; font-variant-numeric:tabular-nums; }
 #chart-symbol-matches:empty, #research-symbol-matches:empty, #chart-symbol-status:empty, #research-symbol-status:empty { display:none; }
 #chart-symbol-matches, #research-symbol-matches { max-height:180px; overflow-y:auto; }
+
+.chart-toggles {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px 0 12px;
+}
+.chart-overlay-field { min-width: 0; border: 0; padding: 0; margin: 0; }
+.chart-overlay-field legend, .chart-osc-choice > label {
+  padding: 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  color: var(--muted);
+}
+.chart-overlay-options { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.chart-toggles .chart-overlay-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 6px;
+  color: var(--warm);
+  background: var(--glass-control);
+  font-size: var(--text-caption);
+  line-height: 1.45;
+  cursor: pointer;
+}
+.chart-overlay-chip:has(input:checked) { border-color: var(--accent-border); background: var(--accent-wash); }
+.chart-overlay-chip:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.chart-overlay-chip input { width: 13px; height: 13px; margin: 0; }
+.chart-osc-choice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.chart-osc-choice select { width: auto; max-width: 100%; min-width: 0; margin: 0; padding: 6px 9px; }
+.chart-osc-choice optgroup, .chart-osc-choice option { background: var(--panel); color: var(--text); }
+.chart-indicator-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin: 4px 0 2px;
+  font: 500 var(--text-caption)/1.6 var(--font-ui);
+  color: var(--muted);
+}
+#chart-indicator-values { display: flex; gap: 4px 12px; flex-wrap: wrap; }
+.chart-ind-value { display: inline-flex; align-items: center; gap: 4px; font-variant-numeric: tabular-nums; }
+.chart-ind-value::before { content: ''; width: 9px; height: 2px; background: #efb876; }
+.chart-ind-value.series-1::before { background: #b8a8eb; }
+.chart-ind-value.series-2::before { background: #83c9bc; }
+.chart-ind-value strong { color: var(--text); font-weight: 550; }
+.chart-series-note { color: var(--warm); font-size: var(--text-caption); margin: 5px 0 8px; }
+#indicator-canvas { height: 136px; }
+.chart-cursor { min-height: 18px; height: auto; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .chart-osc-choice { display: grid; grid-template-columns: auto minmax(0, 1fr); }
+  .chart-osc-choice select { width: 100%; }
+}
+
+.chart-navigation label { white-space: nowrap; }
+.chart-navigation input { flex: 1 1 0; width: 0; }
+.chart-overlay-chip[data-group=sma], .chart-overlay-value[data-group=sma] { --trace: linear-gradient(90deg,#ff9858 50%,#c4b5ee 50%); }
+.chart-overlay-chip[data-group=ema], .chart-overlay-value[data-group=ema] { --trace: #d0bf7e; }
+.chart-overlay-chip[data-group=wma], .chart-overlay-value[data-group=wma] { --trace: #8cd5cd; }
+.chart-overlay-chip[data-group=bollinger], .chart-overlay-value[data-group=bollinger] { --trace: #a3a59b; }
+.chart-overlay-chip[data-group=donchian], .chart-overlay-value[data-group=donchian] { --trace: #b9aeef; }
+.chart-overlay-chip[data-group=keltner], .chart-overlay-value[data-group=keltner] { --trace: #85baca; }
+.chart-overlay-chip[data-group=volume], .chart-overlay-value[data-group=volume] { --trace: linear-gradient(90deg,#78c7b1 50%,#e88c75 50%); }
+.chart-overlay-chip::after, .chart-overlay-value::before {
+  display: inline-block; width: 9px; height: 2px; background: var(--trace); content: '';
+}
+.chart-overlay-chip:not(:has(input:checked))::after { visibility: hidden; }
+.chart-overlay-readout { margin: 4px 0 8px; color: var(--muted); font-size: var(--text-caption); }
+.chart-overlay-readout summary { width: fit-content; cursor: pointer; }
+#chart-overlay-values { display: grid; gap: 3px; padding: 6px 0; font-variant-numeric: tabular-nums; }
+.chart-overlay-value::before { margin-right: 6px; vertical-align: middle; }
+.chart-cursor:empty { min-height: 0; margin: 3px 0; }

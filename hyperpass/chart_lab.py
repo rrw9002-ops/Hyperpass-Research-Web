@@ -10,6 +10,20 @@ import json
 import math
 from datetime import datetime, timezone, timedelta
 
+from .chart_indicators import EXTRA_GROUPS, ema, enrich_chart_indicators
+
+
+INDICATOR_GROUPS = {
+    'sma': ('sma_fast', 'sma_slow'),
+    'ema': ('ema',),
+    'rsi': ('rsi',),
+    'macd': ('macd', 'macd_signal', 'macd_histogram'),
+    'bollinger': ('bb_upper', 'bb_middle', 'bb_lower'),
+    'atr': ('atr',),
+    'volume': ('volume',),
+    **EXTRA_GROUPS,
+}
+
 
 class ChartLabError(ValueError):
     pass
@@ -22,7 +36,7 @@ DEFAULTS = {
     'initial_capital': 100000000, 'fee_bps': 5, 'slippage_mode': 'bps',
     'slippage_bps': 5, 'slippage_ticks': 1, 'tick_size': None,
     'train_fraction': .7, 'start_date': '', 'end_date': '',
-    'indicators': ['sma', 'ema', 'rsi', 'macd', 'bollinger', 'atr', 'volume'],
+    'indicators': list(INDICATOR_GROUPS),
 }
 STRATEGIES = {
     'trend_breakout': '추세 돌파 · SMA20/60 + 직전 20봉 고가 돌파',
@@ -166,23 +180,6 @@ def sma(values, period):
         total += value
         if i >= period: total -= values[i-period]
         if i >= period-1: result[i] = total / period
-    return result
-
-
-def ema(values, period):
-    """SMA-seeded EMA. Leading None values keep alignment, never backfilled."""
-    result, buffer, previous = [None] * len(values), [], None
-    alpha = 2 / (period + 1)
-    for i, value in enumerate(values):
-        if value is None: continue
-        if previous is None:
-            buffer.append(value)
-            if len(buffer) == period:
-                previous = sum(buffer) / period
-                result[i] = previous
-        else:
-            previous += alpha * (value - previous)
-            result[i] = previous
     return result
 
 
@@ -376,10 +373,9 @@ def analyze_chart(packet, options=None):
     candles, warnings = normalize_candles(packet)
     series = indicators(candles, settings)
     backtest = _backtest(candles, series, settings)
-    groups = {'sma':['sma_fast','sma_slow'], 'ema':['ema'], 'rsi':['rsi'],
-              'macd':['macd','macd_signal','macd_histogram'], 'bollinger':['bb_upper','bb_middle','bb_lower'],
-              'atr':['atr'], 'volume':['volume']}
-    selected = {key:series[key] for group in settings['indicators'] for key in groups[group]}
+    if any(group in EXTRA_GROUPS for group in settings['indicators']):
+        series.update(enrich_chart_indicators(candles))
+    selected = {key: series[key] for group in settings['indicators'] for key in INDICATOR_GROUPS[group]}
     warnings.extend([
         '입력 OHLCV로 계산한 연구 결과입니다. TradingView Strategy Tester의 실행 결과와 동일하다고 표시하지 않습니다.',
         '가격 조정·배당·분할·상장폐지·거래정지·호가 잔량·체결 가능성을 완전히 재현하지 않습니다.',
