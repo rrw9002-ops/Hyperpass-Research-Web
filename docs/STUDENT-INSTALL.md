@@ -4,7 +4,7 @@
 
 ## 1. 내 컴퓨터에 맞는 ZIP 받기
 
-[수강생 다운로드 페이지](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.2-preview)를 엽니다. 아래 **Assets**를 펼쳐 다음 파일 중 **하나**를 클릭하세요. GitHub 로그인은 필요 없습니다.
+[수강생 다운로드 페이지](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.3-preview)를 엽니다. 아래 **Assets**를 펼쳐 다음 파일 중 **하나**를 클릭하세요. GitHub 로그인은 필요 없습니다.
 
 - **Windows 64비트**는 `Hyperpass-Research-Web-Windows.zip`을 받습니다. Windows 설정 → 시스템 → 정보에서 시스템 종류를 볼 수 있습니다. 이 배포판의 검증 대상은 x64입니다.
 - **Mac**은 왼쪽 위 사과 메뉴 → 이 Mac에 관하여를 엽니다. **칩**에 Apple M1·M2·M3 등 M 시리즈가 보이면 `Hyperpass-Research-Web-macOS-arm64.zip`을 받습니다. **프로세서**에 Intel이 보이면 `Hyperpass-Research-Web-macOS-x86_64.zip`을 받습니다.

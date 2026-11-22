@@ -27,7 +27,7 @@ class EquityScreenTest(unittest.TestCase):
 
     def test_refresh_contacts_provider_and_labels_outage(self):
         service = screen.EquityScreen(None)
-        with patch('hyperpass.screen_yahoo.fetch_snapshot', side_effect=[
+        with patch.object(screen.time,'monotonic',return_value=123), patch('hyperpass.screen_yahoo.fetch_snapshot', side_effect=[
                 {'market':'US','rows':[],'as_of':'original'},
                 {'market':'US','rows':[],'as_of':'reloaded'},
                 OSError()]) as fetch:

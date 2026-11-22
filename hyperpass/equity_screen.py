@@ -124,14 +124,19 @@ class EquityScreen:
     def snapshot(self, market, *, refresh=False, extra=False):
         if market not in self.locks or (extra and market != 'KR'):
             raise ValueError('시장과 자료 출처를 확인하세요.')
-        started = time.monotonic()
+        with self.state_lock:
+            revision_at_entry = self.kis_revision if market == 'KR' else 0
+            at_entry = self.cache.get((market,revision_at_entry,extra))
         with self.locks[market]:
             with self.state_lock:
                 revision = self.kis_revision if market == 'KR' else 0
                 key = (market,revision,extra)
                 previous = self.cache.get(key)
-            if previous and (previous[0] >= started or (not refresh and started-previous[0] < 90)):
-                return dict(previous[1], cache_status='cached')
+            if previous:
+                # A completed full fetch may serve overlapping requests. The clock is for TTL only.
+                filled_while_waiting = at_entry is None or previous[2] is not at_entry[2]
+                if filled_while_waiting or (not refresh and time.monotonic()-previous[0] < 90):
+                    return dict(previous[1], cache_status='cached')
             self._progress(market)
             def report(done,total,message='공급자 데이터 조회 중'):
                 self._progress(market,done,total,message)
@@ -151,7 +156,7 @@ class EquityScreen:
                 with self.state_lock:
                     if market == 'KR' and revision != self.kis_revision:
                         raise ValueError('KIS 연결이 변경됐습니다. 새 설정으로 다시 조회하세요.')
-                    self.cache[key] = (time.monotonic(),data)
+                    self.cache[key] = (time.monotonic(),data,object())
                 return dict(data,cache_status='fresh')
             except (ValueError,OSError) as error:
                 provider = '한국투자증권(KIS)' if market == 'KR' else 'Yahoo Finance'
@@ -177,7 +182,7 @@ class EquityScreen:
                     if revision != self.kis_revision:
                         raise ValueError('KIS 연결이 변경됐습니다. 다시 조회하세요.')
                     updates = {r['symbol']:r for r in result['rows']}
-                    for key,(stamp,old) in list(self.cache.items()):
+                    for key,(stamp,old,generation) in list(self.cache.items()):
                         if key[0] != 'KR':
                             continue
                         rows = []
@@ -187,7 +192,7 @@ class EquityScreen:
                                 row = {**row, **{k:v for k,v in patch.items() if v is not None}}
                                 row['supplement_fields'] = [k for k in row.get('supplement_fields',[]) if patch.get(k) is None]
                             rows.append(row)
-                        self.cache[key] = stamp,dict(old,rows=rows)
+                        self.cache[key] = stamp,dict(old,rows=rows),generation
                 return result
             finally:
                 with self.state_lock:
