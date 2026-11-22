@@ -123,6 +123,9 @@ one acceptance row for risk-manager-v1, choosing accepted/revise/blocked from it
 When more work is material use delegate and name explicit tasks. To finish, provide your
 complete candidate report in conclusion, with evidence chain, limitations, contrary case,
 readiness and update triggers.
+Delegating only reviewer tasks also requires that complete candidate in conclusion BEFORE
+handoff. An empty conclusion or promise to write the answer after review is not a candidate.
+Producer research can be delegated before a candidate exists; reviewers cannot review a plan.
 The server obtains mandatory independent reviews. After a review, if finishing without substantive
 changes, return the previous candidate_report VERBATIM in conclusion. Changing that candidate
 requires another review. A reviewer verdict revise/blocked cannot be overridden as accepted;
@@ -513,28 +516,46 @@ class Engine:
             decision, _ = self._call("head-manager", instructions, payload, ASSESS)
             rows = decision["acceptances"]
             received = [row["artifact_id"] for row in rows]
-            if set(received) == expected and len(rows) == len(expected):
+            invalid_references = set(received) != expected or len(rows) != len(expected)
+            review_only = (decision["next_action"] == "delegate" and bool(decision["tasks"])
+                           and all(task["role"] in REVIEWERS for task in decision["tasks"]))
+            missing_candidate = (decision["next_action"] == "finish" or review_only) and not decision["conclusion"].strip()
+            if not invalid_references and not missing_candidate:
                 break
-            # This narrowly repairs reference formatting, not review verdicts or
-            # evidence quality. No part of the rejected decision is applied.
-            bounded_received = [identity[:160] for identity in received]
-            feedback = {"code": "invalid_acceptance_references",
-                        "expected_artifact_ids": sorted(expected),
-                        "received_artifact_ids": bounded_received,
-                        "received_ids_truncated": any(len(identity) > 160 for identity in received),
-                        "instruction": "Return a full reassessment with exactly one acceptance row for each current pending ID and no other IDs. Do not repeat already accepted artifacts. The previous decision was rejected in full; none of its acceptance, conclusion, readiness or risk changes was applied. Preserve the evidence and independent review verdicts."}
-            detail = ("채택 목록의 근거 ID가 현재 검토 대기 목록과 다릅니다. "
-                      f"expected={sorted(expected)}, received={bounded_received}")
+            # Reference and empty-candidate faults share ONE correction allowance.
+            # Never apply acceptance, draft, readiness or risk changes from a rejected response.
             status = "blocked" if attempt else "revising" if self.calls < self.max_calls else "budget_exhausted"
-            self._event("acceptance_reference_error", message=detail, status=status,
-                        correction_attempt=attempt + 1, **{key: feedback[key] for key in (
-                            "expected_artifact_ids", "received_artifact_ids", "received_ids_truncated")})
+            feedbacks, details = {}, []
+            if invalid_references:
+                bounded_received = [identity[:160] for identity in received]
+                feedback = {"code": "invalid_acceptance_references",
+                            "expected_artifact_ids": sorted(expected),
+                            "received_artifact_ids": bounded_received,
+                            "received_ids_truncated": any(len(identity) > 160 for identity in received),
+                            "instruction": "Return a full reassessment with exactly one acceptance row for each current pending ID and no other IDs. Do not repeat already accepted artifacts. The previous decision was rejected in full; none of its acceptance, conclusion, readiness or risk changes was applied. Preserve the evidence and independent review verdicts."}
+                detail = ("채택 목록의 근거 ID가 현재 검토 대기 목록과 다릅니다. "
+                          f"expected={sorted(expected)}, received={bounded_received}")
+                details.append(detail)
+                feedbacks["acceptance_reference_feedback"] = feedback
+                self._event("acceptance_reference_error", message=detail, status=status,
+                            correction_attempt=attempt + 1, **{key: feedback[key] for key in (
+                                "expected_artifact_ids", "received_artifact_ids", "received_ids_truncated")})
+            if missing_candidate:
+                detail = "완료 또는 독립 검토 인계에 필요한 후보 보고서가 비어 있습니다."
+                details.append(detail)
+                feedbacks["candidate_handoff_feedback"] = {
+                    "code": "empty_candidate_handoff", "next_action": decision["next_action"],
+                    "review_roles": [task["role"] for task in decision["tasks"] if task["role"] in REVIEWERS],
+                    "instruction": "Return the full reassessment schema. Finish or reviewer-only delegation requires a complete, evidence-supported candidate answer in conclusion under the original mandate, not a plan to write it later. The rejected response applied no acceptance, draft, readiness or risk changes. Preserve independent review verdicts and all acceptance gates. If a candidate is not yet supported, explicitly delegate necessary producer work or stop with the limitation; do not invent evidence or force acceptance/completion."}
+                self._event("candidate_handoff_error", message=detail, status=status,
+                            correction_attempt=attempt + 1, next_action=decision["next_action"],
+                            review_roles=feedbacks["candidate_handoff_feedback"]["review_roles"])
             if attempt:
-                raise WorkflowError("Head Manager의 채택 목록 형식 보정 후에도 오류가 남았습니다. " + detail)
+                raise WorkflowError("Head Manager의 응답 보정 후에도 오류가 남았습니다. " + " ".join(details))
             if self.calls >= self.max_calls:
                 raise BudgetExceeded()
-            payload = dict(payload, acceptance_reference_feedback=feedback)
-            instructions += "\nCORRECTION REQUIRED: follow acceptance_reference_feedback. Resubmit the complete response schema; only current pending IDs belong in acceptances, exactly once each. Do not alter review verdicts to make the format pass."
+            payload = dict(payload, **feedbacks)
+            instructions += "\nCORRECTION REQUIRED: follow the supplied acceptance_reference_feedback and/or candidate_handoff_feedback. Resubmit the full response schema. Only current pending IDs belong in acceptances, once each. Finish or reviewer-only delegation needs a complete candidate in conclusion. Do not alter review verdicts to make the protocol pass. This is the only correction allowed for this reassessment."
         mapping = {x["artifact_id"]: x for x in rows}
         for artifact in pending:
             row = mapping[artifact["id"]]

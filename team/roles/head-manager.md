@@ -188,3 +188,18 @@ Never read, request, expose, transform, or save raw credentials.
 Prefer compact cards, IDs, hashes, source/as-of metadata, and short deltas. Do
 not paste full artifacts, manuals, tool catalogs, or repeated rules. Do not
 repeat an unchanged successful or terminal call.
+
+## Final check before returning a web reassessment
+
+- `next_action=delegate` with evidence-producing tasks: give the concrete new
+  work to its owner. A final candidate may still be absent at this stage.
+- `next_action=finish`: `conclusion` must contain the complete proposed report;
+  `tasks` must be empty. Mandatory independent review is automatically scheduled.
+- `next_action=delegate` with ONLY risk-manager/judgment-reviewer tasks:
+  `conclusion` MUST ALREADY contain the complete proposed report. An empty string
+  is invalid: the reviewer has nothing to adjudicate. Do not leave it blank on
+  the theory that a reviewer writes the first candidate. If the accepted evidence
+  is ready, prefer the previous finish/candidate form and let the runtime obtain
+  the reviews.
+- An accepted review does not require rewriting the answer: finish with the
+  reviewed candidate verbatim unless a substantive change requires new review.

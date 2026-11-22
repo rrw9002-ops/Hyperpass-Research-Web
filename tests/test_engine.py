@@ -370,6 +370,134 @@ class EngineTests(unittest.TestCase):
                 self.assertFalse(result["reviews"]["judgment-reviewer"])
                 self.assertEqual(len([call for call in provider.seen if "acceptance_reference_feedback" in call["payload"]]), 1)
 
+    def test_empty_review_candidate_is_repaired_before_any_acceptance_or_readiness_mutation(self):
+        for action in ("finish", "delegate"):
+            events = []
+            def edit(payload, data):
+                if payload["stage"] != "reassess" or payload["pending"][0]["role"] != "fundamental-analyst":
+                    return
+                data["next_action"] = action
+                data["tasks"] = ([{"role": "judgment-reviewer", "question": "독립 후보 검토", "input_ids": [payload["pending"][0]["id"]]}]
+                                 if action == "delegate" else [])
+                if "candidate_handoff_feedback" not in payload:
+                    data["conclusion"] = " \n\t"
+                    data["require_risk"] = True
+                    data["evidence_readiness"] = "decision-grade"
+                    data["acceptances"][0]["state"] = "blocked"
+                else:
+                    self.assertEqual(engine.draft, "")
+                    self.assertEqual(engine.readiness, "insufficient")
+                    self.assertFalse(engine.require_risk)
+                    self.assertEqual(engine.artifacts[0]["state"], "pending")
+                    self.assertEqual(payload["accepted"], [])
+                    self.assertFalse(any(event["type"] == "acceptance" for event in events))
+                    self.assertEqual(payload["candidate_handoff_feedback"]["next_action"], action)
+            provider = Scripted(edit)
+            engine = Engine(provider, events.append, lambda: False, ROOT)
+            with self.subTest(action=action):
+                result = engine.run("fixture research", evidence="fixture")
+                self.assertEqual(result["status"], "completed")
+                self.assertEqual(result["usage"]["calls"], 6)
+                self.assertTrue(result["reviews"]["judgment-reviewer"])
+                self.assertEqual(len([call for call in provider.seen if "candidate_handoff_feedback" in call["payload"]]), 1)
+                reviewer = next(call for call in provider.seen if call["payload"].get("role") == "judgment-reviewer")
+                self.assertEqual(reviewer["payload"]["candidate_report"], DemoProvider.CONCLUSION)
+                self.assertEqual(reviewer["payload"]["provided_evidence"], "")
+
+    def test_repeated_empty_candidate_blocks_without_partial_state_or_review_dispatch(self):
+        for action in ("finish", "delegate"):
+            events = []
+            def edit(payload, data):
+                if payload["stage"] == "reassess":
+                    data.update(conclusion=" ", next_action=action, require_risk=True, evidence_readiness="decision-grade")
+                    if action == "delegate":
+                        data["tasks"] = [{"role": "judgment-reviewer", "question": "review", "input_ids": []}]
+            provider = Scripted(edit); engine = Engine(provider, events.append, lambda: False, ROOT)
+            with self.subTest(action=action):
+                result = engine.run("fixture research", evidence="fixture")
+                self.assertEqual((result["status"], result["usage"]["calls"]), ("blocked", 4))
+                self.assertEqual(engine.artifacts[0]["state"], "pending")
+                self.assertEqual(engine.draft, "")
+                self.assertEqual(engine.readiness, "insufficient")
+                self.assertFalse(engine.require_risk)
+                self.assertFalse(any(event["type"] == "acceptance" for event in events))
+                self.assertEqual(len([event for event in events if event["type"] == "candidate_handoff_error"]), 2)
+                self.assertFalse(any(call["payload"].get("role") == "judgment-reviewer" for call in provider.seen))
+
+    def test_candidate_and_acceptance_errors_share_one_correction_attempt(self):
+        for sequence in ("references_then_candidate", "candidate_then_references", "both_then_valid"):
+            def edit(payload, data):
+                if payload["stage"] != "reassess" or payload["pending"][0]["role"] != "fundamental-analyst":
+                    return
+                retry = "candidate_handoff_feedback" in payload or "acceptance_reference_feedback" in payload
+                if (not retry and sequence in ("references_then_candidate", "both_then_valid")) or (retry and sequence == "candidate_then_references"):
+                    data["acceptances"] = []
+                if (not retry and sequence in ("candidate_then_references", "both_then_valid")) or (retry and sequence == "references_then_candidate"):
+                    data["conclusion"] = ""
+            with self.subTest(sequence=sequence):
+                result, events, provider = self.run_engine(Scripted(edit))
+                corrections = [call for call in provider.seen if "candidate_handoff_feedback" in call["payload"] or "acceptance_reference_feedback" in call["payload"]]
+                self.assertEqual(len(corrections), 1)
+                if sequence == "both_then_valid":
+                    self.assertEqual((result["status"], result["usage"]["calls"]), ("completed", 6))
+                    self.assertIn("candidate_handoff_feedback", corrections[0]["payload"])
+                    self.assertIn("acceptance_reference_feedback", corrections[0]["payload"])
+                else:
+                    self.assertEqual((result["status"], result["usage"]["calls"]), ("blocked", 4))
+                    self.assertEqual(result["artifacts"][0]["state"], "pending")
+                    self.assertFalse(any(event["type"] == "acceptance" for event in events))
+
+    def test_candidate_correction_respects_budget_and_never_skips_independent_review(self):
+        for already_exhausted in (False, True):
+            def edit(payload, data):
+                if already_exhausted and payload["stage"] == "plan":
+                    data["tasks"].append({"role": "news-analyst", "question": "독립 뉴스 확인", "input_ids": []})
+                if payload["stage"] == "reassess" and "candidate_handoff_feedback" not in payload:
+                    data["conclusion"] = ""
+            with self.subTest(already_exhausted=already_exhausted):
+                result, events, provider = self.run_engine(Scripted(edit), max_calls=4)
+                self.assertEqual((result["status"], result["usage"]["calls"]), ("budget_exhausted", 4))
+                self.assertEqual(len(provider.seen), 4)
+                self.assertFalse(result["report_complete"])
+                self.assertFalse(result["reviews"]["judgment-reviewer"])
+                self.assertFalse(any(call["payload"].get("role") == "judgment-reviewer" for call in provider.seen))
+                corrections = [call for call in provider.seen if "candidate_handoff_feedback" in call["payload"]]
+                self.assertEqual(len(corrections), 0 if already_exhausted else 1)
+                if already_exhausted:
+                    self.assertTrue(all(artifact["state"] == "pending" for artifact in result["artifacts"]))
+
+    def test_producer_delegation_and_stop_allow_empty_candidate_without_correction(self):
+        for action in ("delegate", "stop"):
+            def edit(payload, data):
+                if payload["stage"] == "reassess" and payload["pending"][0]["id"] == "fundamental-analyst-v1":
+                    data.update(conclusion="", next_action=action)
+                    if action == "delegate":
+                        data["tasks"] = [{"role": "fundamental-analyst", "question": "근거 보완", "input_ids": [payload["pending"][0]["id"]]}]
+            with self.subTest(action=action):
+                result, events, provider = self.run_engine(Scripted(edit))
+                self.assertEqual(result["status"], "completed" if action == "delegate" else "blocked")
+                self.assertEqual(result["usage"]["calls"], 7 if action == "delegate" else 3)
+                self.assertFalse(any(event["type"] == "candidate_handoff_error" for event in events))
+                if action == "delegate":
+                    first, second = result["artifacts"][:2]
+                    self.assertEqual(first["owner_id"], second["owner_id"])
+                    self.assertTrue(result["reviews"]["judgment-reviewer"])
+
+    def test_candidate_correction_cannot_override_independent_reviewer_rejection(self):
+        for verdict in ("revise", "blocked"):
+            def edit(payload, data):
+                if payload["stage"] == "specialist" and payload["role"] == "judgment-reviewer":
+                    data["review_verdict"] = verdict
+                if (payload["stage"] == "reassess" and payload["pending"][0]["role"] == "judgment-reviewer"
+                        and "candidate_handoff_feedback" not in payload):
+                    data["conclusion"] = ""
+            with self.subTest(verdict=verdict):
+                result, _, provider = self.run_engine(Scripted(edit))
+                self.assertEqual((result["status"], result["usage"]["calls"]), ("blocked", 6))
+                self.assertEqual(result["artifacts"][-1]["state"], verdict)
+                self.assertFalse(result["reviews"]["judgment-reviewer"])
+                self.assertEqual(len([call for call in provider.seen if "candidate_handoff_feedback" in call["payload"]]), 1)
+
     def test_non_reference_schema_error_is_not_retried(self):
         def edit(payload, data):
             if payload["stage"] == "reassess":
