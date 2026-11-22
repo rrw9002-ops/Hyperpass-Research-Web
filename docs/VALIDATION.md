@@ -1,9 +1,13 @@
-# 검증 범위 — v0.5.2-preview
+# 검증 범위 — v0.5.3-preview
 
 이 앱은 매매를 제거한 별도 웹 구현입니다. 원본의 인증 서비스와 동일한 제품이라고
 표현하지 않습니다. 모델 실행기는 OpenAI Responses, Anthropic Claude, Google Gemini
 API를 지원하며 Codex가 필요 없습니다. Head Manager의 최소 팀 선택, 근거 채택·보완,
 Risk/Judgment의 독립 검토와 역할 책임 분리를 유지합니다.
+
+## v0.5.3 글래스 테마
+
+[배포 검증 파일](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.5.3-preview)에서 같은 커밋으로 생성한 Windows·Mac 설치 파일의 검사 결과와 해시를 확인할 수 있습니다.
 
 ## v0.5.2 한글 글꼴
 
