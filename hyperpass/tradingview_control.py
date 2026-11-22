@@ -25,6 +25,13 @@ class ChartControlError(ValueError):
     pass
 
 
+class _ChartSelectionError(ChartControlError):
+    def __init__(self, state, message, targets=()):
+        super().__init__(message)
+        self.state = state
+        self.targets = targets
+
+
 _MUTATION_LOCK = threading.Lock()
 _ACTIONS = frozenset({"status", "configure", "add_study", "set_inputs", "open_editor",
                       "editor", "new_script", "set_source", "compile", "open_tester", "reports", "run_state"})
@@ -256,12 +263,14 @@ def _select(port, target_id=None):
     try:
         targets = [t for t in _targets(port) if isinstance(t, dict) and _valid_target(t, port)]
     except (OSError, ValueError, TypeError):
-        raise ChartControlError("TradingView Desktop 디버그 연결이 없습니다. 앱을 연결한 뒤 다시 시도하세요.") from None
+        raise _ChartSelectionError("disconnected", "이 PC에서 TradingView Desktop 연결을 찾지 못했습니다.") from None
     selected = [t for t in targets if target_id is None or t["id"] == target_id]
     if not selected:
-        raise ChartControlError("연결된 TradingView 차트 탭이 없습니다. Desktop에서 차트를 열어 주세요.")
+        if targets:
+            raise _ChartSelectionError("choose_tab", "이전에 선택한 탭이 닫혔습니다. 현재 열린 차트 탭을 선택하세요.", targets)
+        raise _ChartSelectionError("open_chart", "Desktop이 연결됐습니다. 종목 차트 탭을 하나 열어 주세요.")
     if len(selected) != 1:
-        raise ChartControlError("TradingView 차트가 여러 개 열려 있습니다. 사용할 차트 탭을 선택하세요.")
+        raise _ChartSelectionError("choose_tab", "TradingView 차트가 여러 개 열려 있습니다. 사용할 차트 탭을 선택하세요.", targets)
     return selected[0], targets
 
 
@@ -333,18 +342,18 @@ def _target_meta(target):
 def status(port=9222, target_id=None):
     """Read-only capabilities and chart selection; never opens panels."""
     _port(port)
+    targets = []
     try:
         target, targets = _select(port, target_id)
         with _Session(target, port) as session:
             value = _check(session.call("status"))
         return {"connected": True, "port": port, "target_id": target["id"], "targets": [_target_meta(t) for t in targets], **value}
     except ChartControlError as exc:
-        # Multiple charts remain selectable even when none was selected.
-        try:
-            targets = [_target_meta(t) for t in _targets(port) if isinstance(t, dict) and _valid_target(t, port)]
-        except (OSError, ValueError, TypeError):
-            targets = []
-        return {"connected": False, "port": port, "targets": targets, "message": str(exc), "capabilities": {}}
+        state = "open_chart"
+        if isinstance(exc, _ChartSelectionError):
+            state, targets = exc.state, exc.targets
+        return {"connected": False, "port": port, "connection_state": state,
+                "targets": [_target_meta(t) for t in targets], "message": str(exc), "capabilities": {}}
 
 
 def _validate_config(symbol, timeframe, indicators):

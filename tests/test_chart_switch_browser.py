@@ -44,6 +44,7 @@ class ChartSwitchBrowserTest(unittest.TestCase):
             archive=app.chart({'source':'yahoo','symbol':'005930.KS'})
             slow_started,release=threading.Event(),threading.Event()
             offline=False
+            need_tab=False
             calls=[]
             def bars(port,symbol,count,target,timeframe):
                 calls.append((symbol,timeframe))
@@ -51,10 +52,16 @@ class ChartSwitchBrowserTest(unittest.TestCase):
                     slow_started.set()
                     if not release.wait(10):
                         raise ValueError('test preview timed out')
-                return dict(packet(range(200,285)),timeframe=timeframe,currency='KRW',observed_symbol=symbol)
+                return dict(packet(range(200,285)),timeframe=timeframe,currency='KRW',observed_symbol=symbol.replace('KRX:','KRX_DLY:'))
             def status(port,target_id=None):
                 if offline:
                     return {'connected':False,'targets':[],'message':'Desktop 연결이 끊어졌습니다.'}
+                if need_tab and target_id!='desk2':
+                    return {'connected':False,'connection_state':'choose_tab','targets':[{'id':'desk2','title':'두 번째 차트'}],
+                            'message':'이전에 선택한 탭이 닫혔습니다.'}
+                if need_tab:
+                    return {'connected':True,'target_id':'desk2','targets':[{'id':'desk2','title':'두 번째 차트'}],
+                            'chart':{'symbol':'KRX:000660','timeframe':'1D'}}
                 return {'connected':True,'target_id':'desk','targets':[{'id':'desk','title':'차트'}],
                         'chart':{'symbol':'KRX:005930','timeframe':'1D'}}
             stack.enter_context(patch('hyperpass.tradingview_control.status',side_effect=status))
@@ -85,6 +92,7 @@ class ChartSwitchBrowserTest(unittest.TestCase):
             release.set()
             expect(page.locator('#chart-title')).to_have_text('SK하이닉스 · 000660 / 일봉')
             expect(page.locator('#chart-provenance')).to_contain_text('TradingView Desktop · 85봉')
+            expect(page.locator('#chart-provenance')).to_contain_text('KRX 지연 시세')
             self.assertEqual(calls,[('KRX:005930','1D'), ('KRX:000660','1D')])
             self.assertEqual(len(app.store.list_charts()),1)
             page.locator('#chart-save-preview').click()
@@ -107,6 +115,20 @@ class ChartSwitchBrowserTest(unittest.TestCase):
             expect(page.locator('#chart-provenance')).to_have_text('Desktop 연결이 끊어졌습니다.')
             expect(page.locator('#chart-empty')).to_be_visible()
             self.assertIsNone(page.evaluate('window.HyperpassChart.lastResult()'))
+            expect(page.locator('#chart-help-launch')).to_be_visible()
+            expect(page.locator('#chart-help-install')).to_have_attribute('href','https://www.tradingview.com/desktop/')
+            self.assertLess(page.locator('#chart-query-top').bounding_box()['y'],page.locator('#chart-strategy').evaluate('e=>e.getBoundingClientRect().y'))
+            offline=False
+            need_tab=True
+            page.locator('#chart-help-retry').click()
+            expect(page.locator('#chart-help-target-block')).to_be_visible()
+            page.locator('#chart-help-target').select_option('desk2')
+            expect(page.locator('#chart-provenance')).to_contain_text('TradingView Desktop · 85봉')
+            expect(page.locator('#chart-desktop-help')).to_be_hidden()
+            with page.expect_response(lambda response: '/api/charts' in response.url and
+                                      response.request.method=='POST'):
+                page.locator('#chart-query-top').click()
+            expect(page.locator('#chart-saved-status')).to_have_text('미리보기')
             page.locator('#chart-source').select_option('csv')
             expect(page.locator('#chart-provenance')).to_contain_text('CSV 파일')
             expect(page.locator('#chart-symbol')).to_have_value('')

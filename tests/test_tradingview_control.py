@@ -48,6 +48,17 @@ def snapshot(new=True, errors=None):
 
 
 class ControlTests(unittest.TestCase):
+    def test_desktop_status_reports_the_next_connection_step(self):
+        with patch.object(tv, '_targets', side_effect=ConnectionRefusedError) as probe:
+            self.assertEqual(tv.status()['connection_state'], 'disconnected')
+            probe.assert_called_once_with(9222)
+        with patch.object(tv, '_targets', return_value=[]):
+            self.assertEqual(tv.status()['connection_state'], 'open_chart')
+        with patch.object(tv, '_targets', return_value=[TARGET]):
+            status=tv.status(target_id='closed-tab')
+            self.assertEqual(status['connection_state'], 'choose_tab')
+            self.assertEqual(status['targets'][0]['id'], TARGET['id'])
+
     def test_chart_switch_after_configure_stops_before_strategy_editor(self):
         session=Session()
         with patch.object(tv,"_select",return_value=(TARGET,[TARGET])), \

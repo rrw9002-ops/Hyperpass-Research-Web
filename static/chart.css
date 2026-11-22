@@ -14,6 +14,14 @@
   outline-offset: 2px;
 }
 
+#chart-query-top {width:100%; margin-top:8px;}
+.chart-desktop-help {border:1px solid var(--accent-border);border-radius:10px;background:var(--accent-wash);padding:16px;margin-top:14px;}
+.chart-desktop-help h3 {margin:0;font-size:1rem;}
+.chart-desktop-help p,.chart-desktop-help label {display:block;line-height:1.7;margin:8px 0;color:var(--warm);font-size:var(--text-label);}
+.chart-desktop-help select {display:block;width:100%;margin:5px 0 10px;}
+.chart-desktop-help .chart-actions {flex-wrap:wrap;gap:8px;}
+#chart-help-yahoo {margin-top:8px;}
+
 .chart-table-scroll tr:hover td { background: var(--glass-control); }
 
 .market-overview { padding: 16px 20px; }
@@ -23,8 +31,16 @@
 .market-pickers { flex-wrap:wrap; }
 .market-region .chip[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); }
 .market-pickers select { width:auto; max-width:100%; }
-#market-index-curve { width:100%; height:78px; display:block; }
-#market-index-curve[hidden] { display:none; }
+#market-index-plot { border:1px solid var(--glass-edge); border-radius:8px; overflow:hidden; background:var(--glass-inset); margin-top:9px; }
+#market-index-plot canvas { display:block; width:100%; cursor:crosshair; }
+#market-index-plot canvas:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+#market-index-curve { height:144px; }
+#market-index-atr { height:82px; }
+#market-index-plot[hidden], #market-index-plot canvas[hidden] { display:none; }
+.market-index-legend { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 12px; padding:7px 9px 2px; font-size:var(--text-caption); font-variant-numeric:tabular-nums; color:var(--warm); }
+.market-index-legend strong { color:var(--text); }
+.market-atr-legend { border-top:1px solid var(--glass-edge); padding-bottom:5px; }
+.market-atr-legend strong { color:#b9a2e9; }
 #market-index-info { margin:8px 0 4px; font-variant-numeric:tabular-nums; }
 #chart-symbol-matches:empty, #research-symbol-matches:empty, #chart-symbol-status:empty, #research-symbol-status:empty { display:none; }
 #chart-symbol-matches, #research-symbol-matches { max-height:180px; overflow-y:auto; }
@@ -104,3 +120,10 @@
 #chart-overlay-values { display: grid; gap: 3px; padding: 6px 0; font-variant-numeric: tabular-nums; }
 .chart-overlay-value::before { margin-right: 6px; vertical-align: middle; }
 .chart-cursor:empty { min-height: 0; margin: 3px 0; }
+#chart-personal-overlay {
+  display: flex; align-items: baseline; justify-content: flex-start; flex-wrap: wrap;
+  gap: 3px 10px; margin: 8px 0; font-size: var(--text-caption);
+}
+#chart-personal-overlay[hidden] { display: none; }
+#chart-personal-name { color: #ffad62; }
+#chart-personal-status { overflow-wrap: anywhere; }

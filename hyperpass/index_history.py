@@ -1,4 +1,4 @@
-"""On-demand domestic/US index closes with verifiable provider identity and dated cache."""
+"""Domestic/US daily index OHLC and Wilder ATR with a close-only FRED fallback."""
 import calendar
 import csv
 import io
@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib import parse, request
 from xml.etree import ElementTree
 
+from .chart_indicators import average_true_range
 from .symbol_search import INDICES
 
 
@@ -40,16 +41,31 @@ def _window(today):
 
 def _series(rows, start, end):
     result = []
-    for day, price in rows:
+    for raw in rows:
+        day = date.fromisoformat(raw["date"])
         if not start <= day <= end:
             continue
-        day = day.isoformat()
-        price = float(price)
-        if not math.isfinite(price) or price <= 0 or (result and result[-1]["date"] >= day):
+        day_label = day.isoformat()
+        close = float(raw["close"])
+        if not math.isfinite(close) or close <= 0 or (result and result[-1]["date"] >= day_label):
             raise ValueError("지수의 날짜 순서 또는 종가를 확인할 수 없습니다.")
-        result.append({"date": day, "close": price})
+        point = {"date": day_label, "close": close}
+        if any(key in raw for key in ("open", "high", "low")):
+            opening, high, low = (float(raw[key]) for key in ("open", "high", "low"))
+            tolerance = high * 1e-10
+            if (not all(math.isfinite(x) and x > 0 for x in (opening, high, low))
+                    or low > high or low - tolerance > min(opening, close)
+                    or high + tolerance < max(opening, close)):
+                raise ValueError("지수 일봉의 시가·고가·저가·종가 범위를 확인할 수 없습니다.")
+            point.update(open=opening, high=high, low=low)
+        result.append(point)
     if len(result) < 2:
         raise ValueError("지수 수익률을 표시할 관측일이 부족합니다.")
+    if any("open" in point for point in result):
+        if not all("open" in point for point in result):
+            raise ValueError("지수 일봉에서 시가·고가·저가가 빠진 날이 있습니다.")
+        for point, value in zip(result, average_true_range(result)):
+            point["atr14"] = value
     return result
 
 
@@ -67,7 +83,8 @@ def _alternative(symbol, today):
             parts = item.get("data", "").split("|")
             if len(parts) < 5:
                 raise ValueError("네이버 금융 지수 열을 확인하세요.")
-            rows.append((datetime.strptime(parts[0], "%Y%m%d").date(), parts[4]))
+            rows.append({"date": datetime.strptime(parts[0], "%Y%m%d").date().isoformat(),
+                         "open": parts[1], "high": parts[2], "low": parts[3], "close": parts[4]})
         return "Naver 금융", "https://stock.naver.com/domestic/index/" + code + "/price", _series(rows, start, today)
 
     code = FRED[symbol]
@@ -76,7 +93,8 @@ def _alternative(symbol, today):
     reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig")))
     if reader.fieldnames != ["observation_date", code]:
         raise ValueError("FRED에서 요청한 지수 계열을 확인할 수 없습니다.")
-    rows = ((date.fromisoformat(row["observation_date"]), row[code]) for row in reader if row[code] not in ("", "."))
+    rows = ({"date": row["observation_date"], "close": row[code]}
+            for row in reader if row[code] not in ("", "."))
     return "FRED", "https://fred.stlouisfed.org/series/" + code, _series(rows, start, today)
 
 
@@ -95,8 +113,7 @@ def _load(path, symbol, now):
         points = data["series"]
         if not isinstance(points, list) or not 2 <= len(points) <= 100:
             return None
-        rows = ((date.fromisoformat(p["date"]), p["close"]) for p in points)
-        data["series"] = _series(rows, date.min, now.date())
+        data["series"] = _series(points, date.min, now.date())
         if data["as_of"] != data["series"][-1]["date"]:
             return None
         return data
@@ -134,7 +151,8 @@ def _get(sources, symbol, path):
     from .chart_lab import normalize_candles
     now = datetime.now(timezone.utc)
     cache = _load(path, symbol, now)
-    if cache and (now - datetime.fromisoformat(cache["retrieved_at"])).total_seconds() < FRESH_SECONDS:
+    if (cache and cache.get("format_version") == 2
+            and (now - datetime.fromisoformat(cache["retrieved_at"])).total_seconds() < FRESH_SECONDS):
         return dict(cache, cache_status="fresh_cache")
     notice = ""
     try:
@@ -142,20 +160,26 @@ def _get(sources, symbol, path):
         if packet.get("symbol") != symbol:
             raise ValueError("Yahoo 지수 코드가 요청과 다릅니다.")
         bars, _ = normalize_candles(packet)
-        rows = ((date.fromisoformat(b["timestamp"][:10]), b["close"]) for b in bars)
+        rows = (dict(bar, date=bar["timestamp"][:10]) for bar in bars)
         series = _series(rows, _window(now.date()), now.date())
         provider, source = "Yahoo Finance", packet["source_url"]
     except (ValueError, OSError, KeyError, TypeError):
         try:
             provider, source, series = _alternative(symbol, now.date())
-            notice = "Yahoo 조회가 어려워 다른 제공처의 일별 종가를 표시합니다."
+            notice = "Yahoo 조회가 어려워 보조 제공처에서 조회했습니다."
         except (ValueError, OSError, KeyError, TypeError, csv.Error, ElementTree.ParseError):
             if cache:
                 return dict(cache, cache_status="stale_cache", notice="두 제공처에 연결하지 못해 마지막으로 저장한 값을 표시합니다.")
             raise ValueError("Yahoo와 보조 제공처에서 지수를 받지 못했습니다. 잠시 후 다시 조회하세요.") from None
     if cache and series[-1]["date"] < cache["as_of"]:
         return dict(cache, cache_status="stale_cache", notice="이번 제공처의 관측일보다 최근인 마지막 저장값을 표시합니다.")
+    if (cache and series[-1]["date"] == cache["as_of"] and "open" not in series[-1]
+            and "open" in cache["series"][-1]
+            and math.isclose(series[-1]["close"], cache["series"][-1]["close"], abs_tol=0.005)):
+        return dict(cache, cache_status="stale_cache",
+                    notice="보조 제공처에서 같은 날짜의 종가를 확인해 저장된 일봉과 ATR을 표시합니다.")
     result = {"symbol": symbol, "name": NAMES[symbol], "provider": provider, "source_url": source,
+              "format_version": 2,
               "retrieved_at": now.isoformat(), "as_of": series[-1]["date"], "series": series,
               "cache_status": "live", "notice": notice}
     _save(path, result)

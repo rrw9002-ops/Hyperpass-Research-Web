@@ -670,7 +670,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/guide':
             return self.send(200,(self.app.root/'수강생-시작가이드.html').read_bytes(),'text/html; charset=utf-8')
         static={'/static/student-guide.css':'student-guide.css','/static/student-guide.js':'student-guide.js','/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
-        static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js'})
+        static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js',
+                       '/local-indicators.js': 'local-indicators.js'})
         static.update({f'/{name}':name for name in ('strategy-lab.js','strategy-lab.css','portfolio-conditions.js','pine-batch.js','screener.js','screener.css','select-theme.js','watchlist.js','watchlist.css')})
         static.update({'/fonts/PretendardVariable.woff2': 'fonts/PretendardVariable.woff2',
                        '/fonts/OFL.txt': 'fonts/OFL.txt'})

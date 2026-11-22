@@ -1,10 +1,10 @@
-# 강사용 배포 안내 · v0.7.3-preview
+# 강사용 배포 안내 · v0.7.4-preview
 
 Windows, Apple Silicon Mac, Intel Mac용 실행 파일을 각각 해당 OS에서 빌드합니다.
 실행 파일 ZIP에는 Python이 포함되어 수강생이 Python이나 Codex를 설치할 필요가
 없습니다. 소스 ZIP만 사용할 때는 Python 3.11 이상이 필요합니다.
 
-[v0.7.3 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.3-preview)의 검증 JSON에서 커밋, 플랫폼별 실행 결과와 파일의 SHA-256을 확인하세요.
+[v0.7.4 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.4-preview)의 검증 JSON에서 커밋, 플랫폼별 실행 결과와 파일의 SHA-256을 확인하세요.
 네이티브 설치 점검은 소스, 단독 실행 파일, 압축 해제한 앱을 각각 실행합니다. 개인 지표 저장·수정·다시 열기도 검사합니다.
 
 이전 버전에서 Windows TradingView Desktop의 백테스트와 OpenAI 기술 분석·독립 검토·최종 보고서를 실제로 확인했습니다. 검증한 모델과 실행 조건은 [검증 기록](VALIDATION.md)에 있습니다.
@@ -71,7 +71,7 @@ Python 3.11과 PyInstaller 6.22.3으로 각각 빌드합니다. Mac 라벨과 CP
 각 OS에서 전체 단위 테스트 → 독립 소스 설치 점검 → 실행 파일 빌드 → 실행 파일
 초기 지침 생성 점검 → ZIP 생성 → 실제 압축 해제본 점검 순서로 진행합니다.
 모든 단계가 성공해야 OS별 배포 ZIP과 SHA-256을 업로드합니다. 검증 로그와 JSON은
-실패 시에도 별도 `validation-v0.7.3-preview-*` 아티팩트로 업로드합니다.
+실패 시에도 별도 `validation-v0.7.4-preview-*` 아티팩트로 업로드합니다.
 
 ## 검증 결과의 범위
 

@@ -74,7 +74,43 @@ class ChartStudioBrowserTest(unittest.TestCase):
             indicators.select_option(stored["id"])
             expect(chart.locator("#tv-personal-code")).to_have_value(code)
 
-            # A Yahoo chart still requires an identified Desktop chart for personal Pine.
+            # A personal study can render on the in-app OHLCV canvas while Desktop is offline.
+            from test_chart_lab import packet
+            prices = [100.0] * 65
+            for index, high in [(10, 111.0), (30, 116.0), (50, 114.0)]:
+                prices[index] = high
+            with patch.object(app.sources, "chart_history", return_value=dict(
+                    packet(prices), provider="yahoo", symbol="AAPL", timeframe="1d")):
+                saved_chart = app.chart({"source": "yahoo", "symbol": "AAPL"})
+            page.evaluate("(id) => window.HyperpassChart.open(id)", saved_chart["id"])
+            chart.locator("#personal-local-apply").click()
+            expect(chart.locator("#chart-personal-status")).to_contain_text("확인 고점 3개 · 연결선 2개")
+            self.assertTrue(chart.locator("#price-canvas").evaluate("""canvas => {
+              const rgba = canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;
+              let count = 0;
+              for(let i=0;i<rgba.length;i+=4) if(rgba[i]===255 && rgba[i+1]===152 && rgba[i+2]===0) count++;
+              return count>20;
+            }"""))
+            canvas = chart.locator("#price-canvas")
+            width = canvas.bounding_box()["width"]
+            canvas.hover(position={"x": 12 + 10.5 * (width - 80) / 65, "y": 76})
+            expect(chart.locator("#chart-cursor")).to_contain_text("2020-01-11")
+            expect(chart.locator("#chart-cursor")).to_contain_text("확정 봉 2020-01-16 마감 후 확인")
+            self.assertEqual(app.tv_jobs.list(), [])
+            chart.locator("#tv-personal-code").fill(code + '\nalertcondition(true, "unsupported")')
+            chart.locator("#personal-local-apply").click()
+            expect(chart.locator("#tv-personal-feedback")).to_contain_text("현재 차트에 적용하지 못했습니다")
+            chart.locator("#chart-personal-remove").click()
+            expect(chart.locator("#chart-personal-overlay")).to_be_hidden()
+            chart.locator("#tv-personal-code").fill(
+                'indicator("개인 평균선", overlay=true)\nn = input.int(3, minval=1)\nplot(ta.sma(close,n), "SMA3")')
+            chart.locator("#personal-local-apply").click()
+            expect(chart.locator("#chart-personal-status")).to_have_text("SMA3")
+            chart.locator("#chart-overlay-readout > summary").click()
+            expect(chart.locator("#chart-overlay-values")).to_contain_text("SMA3 100.00")
+            chart.locator("#tv-personal-code").fill(code)
+
+            # Desktop remains an explicit, independently verified execution target.
             chart.locator("#chart-source").select_option("yahoo")
             chart.locator("#chart-symbol").fill("삼성전자")
             chart.locator("#chart-interval").select_option("1wk")

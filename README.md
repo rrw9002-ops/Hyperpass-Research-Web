@@ -1,4 +1,4 @@
-# Hyperpass Research Web · v0.7.3-preview
+# Hyperpass Research Web · v0.7.4-preview
 
 질문을 입력하면 **Head Manager가 필요한 전문 에이전트를 구성하고, 근거를 검수하고,
 보완과 독립 검토를 거쳐 보고서를 남기는 로컬 웹앱**입니다. 브라우저에서 사용하며
@@ -33,9 +33,9 @@ ZIP을 모두 풀고 **수강생-시작가이드.html**을 열거나 앱 상단�
 
 수강생은 [빠른 시작 안내](docs/QUICKSTART.md)를 순서대로 따라 하세요.
 
-1. [v0.7.3 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.3-preview)에 게시된
+1. [v0.7.4 다운로드](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.4-preview)에 게시된
    본인 OS용 ZIP을 받습니다.
-   소스 ZIP은 [공개 저장소](https://github.com/rrw9002-ops/Hyperpass-Research-Web)의 **Code → Download ZIP**입니다.
+   같은 버전의 코드를 수정하려면 같은 릴리스에서 **Hyperpass-Research-Web-source.zip**을 받으세요.
 2. ZIP을 **새 폴더에 압축 해제**합니다. 압축 파일 안에서 바로 실행하지 않습니다.
 3. 아래 표의 시작 파일을 실행하고, 실행 창을 열어 둔 채 브라우저를 사용합니다.
 4. 처음에는 **화면 체험 →**으로 키 없이 화면과 보고서 저장 흐름을 확인합니다.
@@ -206,7 +206,9 @@ Windows Desktop에서 실제 컴파일·보고서 수집을 확인했으며 Mac�
 **차트 연구실 → 개인 지표 · 추세선**에서 **1년 고점 추세선 예시**를 누르면 Pine 코드를 바로 볼 수 있습니다.
 다른 아이디어는 원하는 선·계산 기준·기간을 한국어로 적고 연결한 AI로 코드를 생성합니다.
 직접 작성한 Pine `indicator()` 코드도 붙여넣을 수 있습니다. 코드를 편집하고 이름을
-붙여 **내 지표에 저장**하면 다시 열어 수정할 수 있습니다. 적용할 때는 차트 연구실에서 TradingView Desktop에 연결하고 대상 차트·종목·주기를 확인하세요. Pine은 선택한 Desktop 차트에서 실행되며 적용 결과는 차트 연구실에 표시됩니다.
+붙여 **내 지표에 저장**하면 다시 열어 수정할 수 있습니다. **현재 종목 차트에 표시**를 누르면 지원하는 가격선·이동평균·구간 고저가와 고점 추세선이 앱의 종목 캔들 위에 그려집니다. 전체 Pine 문법이 필요하면 **외부 TradingView Desktop에서 실행**을 선택하세요.
+
+오른쪽 위 시장 지수에서는 코스피·코스닥·나스닥 종합·S&P 500·다우의 일봉과 ATR(14)을 같은 날짜로 확인할 수 있습니다. 화면에는 실제 데이터 제공자와 마지막 관측일이 표시됩니다.
 
 ## 팀 지침과 분석 방법 수정
 
@@ -319,7 +321,7 @@ API 오류가 나면 웹앱에서 연결을 다시 확인하세요. 인증 실�
 
 ## 배포와 검증
 
-[v0.7.3 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.3-preview)의 검증 파일에서 배포 커밋, OS별 테스트와 설치 점검, ZIP의 SHA-256을 확인할 수 있습니다.
+[v0.7.4 릴리스](https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.4-preview)의 검증 파일에서 배포 커밋, OS별 테스트와 설치 점검, ZIP의 SHA-256을 확인할 수 있습니다.
 설치 점검에는 실제 앱을 실행해 개인 지표를 저장하고 수정한 뒤 다시 여는 과정이 포함됩니다.
 
 [v0.4.1 검증 기록](docs/VALIDATION.md)에는 Windows에서 OpenAI `gpt-5.4`·추론 `medium`으로 실제 TradingView 백테스트를 해석해 독립 검토와 최종 보고서 내보내기까지 완료한 결과가 있습니다.

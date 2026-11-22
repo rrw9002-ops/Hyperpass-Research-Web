@@ -6,50 +6,28 @@
   if (!outputPanel) return;
 
   const example = "최근 1년간 고점들을 추세선으로 연결해줘";
-  const trend = {
-    name: "최근 1년 고점 추세선",
-    code: `//@version=6
-indicator("Hyperpass · 1Y Pivot Highs", overlay = true, max_lines_count = 500)
-pivotBars = input.int(5, "고점 좌우 확인 봉", minval = 1, maxval = 100)
-lookbackDays = input.int(365, "조회 일수", minval = 1, maxval = 3650)
-lineColor = input.color(color.orange, "추세선 색")
-cutoff = last_bar_time - lookbackDays * 86400000
-highPoint = ta.pivothigh(high, pivotBars, pivotBars)
-pivotTime = time[pivotBars]
-var int previousTime = na
-var float previousHigh = na
-
-if barstate.isconfirmed and not na(highPoint) and pivotTime >= cutoff
-    if not na(previousTime) and previousTime >= cutoff
-        line.new(previousTime, previousHigh, pivotTime, highPoint, xloc = xloc.bar_time, color = lineColor, width = 2)
-    previousTime := pivotTime
-    previousHigh := highPoint
-
-if barstate.islast
-    for segment in line.all
-        if line.get_x1(segment) < cutoff
-            line.delete(segment)
-`
-  };
+  const trend = window.HyperpassLocalIndicators.example;
   const panel = document.createElement("section");
   panel.className = "panel tv-personal-panel";
   panel.setAttribute("aria-labelledby", "tv-personal-heading");
-  panel.innerHTML = `<div class="panel-heading"><div><span class="section-kicker">PINE SCRIPT · TRADINGVIEW DESKTOP</span><h2 id="tv-personal-heading">개인 지표 · 추세선</h2></div></div>
+  panel.innerHTML = `<div class="panel-heading"><div><h2 id="tv-personal-heading">개인 지표 · 추세선</h2></div></div>
     <div class="tv-panel-body">
       <label class="field-label" for="tv-personal-prompt">차트에 무엇을 표시할까요?</label>
       <textarea id="tv-personal-prompt" rows="2" maxlength="4000" placeholder="예: 최근 1년간 고점들을 추세선으로 연결해줘"></textarea>
       <div class="workspace-actions"><button type="button" class="button ghost compact" id="tv-personal-example">1년 고점 추세선 예시</button>
         <button type="button" class="button primary compact" id="tv-personal-generate">요청으로 코드 만들기</button></div>
-      <p class="cost-note">예시는 AI 연결 없이 열 수 있습니다. 다른 요청은 분석 화면에서 선택한 AI와 모델을 사용합니다.</p>
+      <p class="cost-note">고점 추세선 예시는 AI 없이 바로 쓸 수 있습니다. 다른 요청은 리서치 팀에서 선택한 모델로 코드를 만듭니다.</p>
       <div class="field-pair"><div><label class="field-label" for="tv-personal-list">내 지표</label>
         <select id="tv-personal-list"><option value="">새 지표</option></select></div><div>
         <label class="field-label" for="tv-personal-name">저장할 이름</label><input id="tv-personal-name" maxlength="120" placeholder="예: 나의 고점 추세선"></div></div>
       <label class="field-label" for="tv-personal-code">Pine 지표 코드</label>
       <textarea id="tv-personal-code" rows="10" maxlength="64000" spellcheck="false" placeholder='//@version=6&#10;indicator("나의 이동평균", overlay=true)&#10;plot(ta.sma(close, 20))'></textarea>
-      <div class="chart-tv-target-note"><p id="chart-tv-destination" class="cost-note" aria-live="polite"></p><button id="chart-tv-settings" type="button" class="text-button">Desktop 연결·주기 설정</button></div>
-      <div class="workspace-actions"><button type="button" class="button ghost" id="tv-personal-save">내 지표에 저장</button>
-        <button type="button" class="button primary" id="tv-personal-apply">Desktop 차트에 지표 적용 ↗</button></div>
+      <p class="cost-note">고점 추세선, 가격선, SMA·EMA, 구간 최고·최저가를 현재 봉에 그립니다. 적용 상태는 이 화면에서 유지됩니다. 다시 쓸 코드는 ‘내 지표에 저장’으로 보관하세요. 저장한 차트와 에이전트에게 보내는 근거에는 이 개인 지표가 포함되지 않습니다.</p>
+      <div class="workspace-actions"><button type="button" class="button primary" id="personal-local-apply">현재 종목 차트에 표시 ↑</button>
+        <button type="button" class="button ghost" id="tv-personal-save">내 지표에 저장</button></div>
       <p id="tv-personal-feedback" class="feedback" role="status" aria-live="polite"></p>
+      <div class="chart-tv-target-note"><p id="chart-tv-destination" class="cost-note" aria-live="polite"></p><button id="chart-tv-settings" type="button" class="text-button">Desktop 연결·주기 설정</button></div>
+      <button type="button" class="button ghost compact" id="tv-personal-apply">외부 TradingView Desktop에서 실행 ↗</button>
     </div>`;
   $("chart-tv-lab").prepend(panel);
   $("chart-indicator-jump").addEventListener("click", () => {
@@ -60,7 +38,7 @@ if barstate.islast
     const symbol = $("chart-symbol").value.trim() || ($("chart-source").value === "tradingview" ? "열린 종목" : "종목 선택 필요");
     const override = $("chart-tv-timeframe");
     const interval = override.value ? override.selectedOptions[0].textContent : $("chart-source").value === "tradingview" ? "열린 차트 주기" : $("chart-interval").selectedOptions[0]?.textContent || "주기 선택 필요";
-    $("chart-tv-destination").textContent = "적용 대상 · " + symbol + " / " + interval + " · 연결된 TradingView Desktop 차트를 이 종목·주기로 설정하고 지표를 표시합니다.";
+    $("chart-tv-destination").textContent = "외부 Desktop 실행 대상 · " + symbol + " / " + interval + " · 전체 Pine 문법은 연결된 TradingView Desktop에서 실행할 수 있습니다.";
   }
   for (const id of ["chart-symbol", "chart-source", "chart-interval", "chart-tv-timeframe"]) {
     $(id).addEventListener("input", updateDestination);
@@ -106,7 +84,7 @@ if barstate.islast
   }
   function markWriting(active) {
     writing = active;
-    for (const id of ["tv-personal-generate","tv-personal-example","tv-personal-save","tv-personal-list","tv-personal-prompt","tv-personal-name","tv-personal-code"]) $(id).disabled = active;
+    for (const id of ["tv-personal-generate","tv-personal-example","tv-personal-save","tv-personal-list","tv-personal-prompt","tv-personal-name","tv-personal-code","personal-local-apply"]) $(id).disabled = active;
   }
   async function load() {
     if (workspace.hidden || ready || loading) return;
@@ -122,9 +100,19 @@ if barstate.islast
       loading = false;
     }
   }
+  function applyLocal(scroll) {
+    try {
+      const result = window.HyperpassChart.applyPersonalIndicator(name.value.trim(), code.value);
+      setMessage(result);
+      if (scroll) $("chart-personal-overlay").scrollIntoView({block:"center"});
+    } catch (error) {
+      setMessage(error.message, true);
+    }
+  }
+  $("personal-local-apply").addEventListener("click", () => applyLocal(true));
   function useExample() {
     showDraft(trend);
-    setMessage("지난 365일 동안 좌우 5개 봉으로 확정한 고점들을 연결합니다. 차트에 고점이 둘 이상 있어야 선이 보입니다. 일 년 전체를 보려면 일봉으로 적용하세요.");
+    applyLocal(false);
   }
   $("tv-personal-example").addEventListener("click", () => {
     if (!canReplace()) return;
@@ -146,7 +134,7 @@ if barstate.islast
     try {
       const generated = await api("/api/indicators/generate", {prompt:instruction, ...settings});
       showDraft(generated);
-      setMessage("AI가 작성한 코드를 검토하고 원하는 종목과 주기에 적용하세요.");
+      applyLocal(false);
     } catch(error) {
       setMessage(error.message, true);
     } finally {

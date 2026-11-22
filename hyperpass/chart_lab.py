@@ -10,7 +10,7 @@ import json
 import math
 from datetime import datetime, timezone, timedelta
 
-from .chart_indicators import EXTRA_GROUPS, ema, enrich_chart_indicators
+from .chart_indicators import EXTRA_GROUPS, average_true_range, ema, enrich_chart_indicators
 
 
 INDICATOR_GROUPS = {
@@ -210,12 +210,7 @@ def indicators(candles, settings):
     ema12, ema26 = ema(close, 12), ema(close, 26)
     macd = [None if a is None or b is None else a-b for a,b in zip(ema12, ema26)]
     signal = ema(macd, 9)
-    tr = [bar['high']-bar['low'] if i == 0 else max(bar['high']-bar['low'], abs(bar['high']-close[i-1]), abs(bar['low']-close[i-1])) for i,bar in enumerate(candles)]
-    atr = [None] * len(close)
-    period = settings['atr_period']
-    if len(close) >= period:
-        atr[period-1] = sum(tr[:period]) / period
-        for i in range(period, len(close)): atr[i] = (atr[i-1]*(period-1)+tr[i]) / period
+    atr = average_true_range(candles, settings['atr_period'])
     return {'sma_fast':fast, 'sma_slow':slow, 'ema':ema(close,settings['ema_period']),
             'rsi':rsi(close,settings['rsi_period']), 'macd':macd, 'macd_signal':signal,
             'macd_histogram':[None if a is None or b is None else a-b for a,b in zip(macd,signal)],

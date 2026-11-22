@@ -55,6 +55,16 @@ def _complete_sma(values, period):
     return result
 
 
+def average_true_range(candles, period=14):
+    """Wilder ATR seeded with the first complete window, in price units."""
+    true_ranges = []
+    for i, bar in enumerate(candles):
+        high, low = bar["high"], bar["low"]
+        previous_close = candles[i - 1]["close"] if i else bar["close"]
+        true_ranges.append(max(high - low, abs(high - previous_close), abs(low - previous_close)))
+    return _wilder(true_ranges, period, 0)
+
+
 def _directional(candles, true_ranges):
     """DMI starts with 14 observed price changes; ADX needs 14 valid DX values."""
     length = len(candles)

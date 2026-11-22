@@ -7,6 +7,7 @@
  <div class="panel-heading"><h2>데이터와 가설</h2><span class="small-muted">01 — SETUP</span></div>
  <label for="chart-source" class="field-label">차트 데이터</label><select id="chart-source"><option value="yahoo">Yahoo Finance · 키 없이 조회</option><option value="tradingview">TradingView · Desktop 차트 조회</option><option value="csv">TradingView · CSV 가져오기</option></select>
  <label for="chart-symbol" class="field-label">종목명 또는 티커</label><input id="chart-symbol" maxlength="80" required autocomplete="off" spellcheck="false" placeholder="예: 삼성전자, 애플 또는 AAPL" aria-describedby="chart-symbol-status"><div id="chart-symbol-matches" class="tv-symbol-matches"></div><p id="chart-symbol-status" class="small-muted" aria-live="polite"></p>
+ <button id="chart-query-top" class="button primary compact" type="submit">차트 조회</button>
  <div id="chart-date-selectors" class="field-pair"><div><label for="chart-period" class="field-label">조회 기간</label><select id="chart-period"><option value="1y">1년</option><option value="2y" selected>2년</option><option value="5y">5년</option></select></div><div><label for="chart-interval" class="field-label">차트 주기</label><select id="chart-interval"><option value="1d">일봉</option><option value="1wk">주봉</option><option value="1mo">월봉</option></select></div></div><p id="chart-source-hint" class="cost-note"></p>
  <details id="chart-desktop"><summary>TradingView Desktop 연결</summary><label class="field-label" for="chart-port">Desktop 연결 포트</label><input id="chart-port" type="number" value="9222" min="1024" max="65535"><label class="field-label" for="chart-tv-timeframe">조회·지표에 사용할 Desktop 주기</label><select id="chart-tv-timeframe"><option value="">차트 연구실 주기 사용</option><option value="1D">일봉</option><option value="1W">주봉</option><option value="1M">월봉</option><option value="60">1시간</option><option value="15">15분</option><option value="5">5분</option></select><p class="cost-note">차트 조회와 Pine 지표 적용에 사용할 Desktop 창을 선택하세요. Desktop 데이터는 최대 500봉까지 읽습니다.</p><div class="chart-actions"><button type="button" class="button ghost compact" id="chart-use-desktop">열린 종목 가져오기</button><button type="button" class="text-button" id="chart-desktop-launch">Desktop 연결 실행</button></div><label id="chart-target-block" hidden>열린 차트 탭<select id="chart-target" aria-label="열린 Desktop 차트 탭"></select></label><p id="chart-desktop-status" class="small-muted" role="status"></p></details>
  <div id="chart-csv-block" hidden><label class="field-label" for="chart-csv-file">내보낸 CSV 파일</label><input id="chart-csv-file" type="file" accept=".csv,text/csv"><label class="field-label" for="chart-csv">또는 CSV 붙여넣기</label><textarea id="chart-csv" rows="4" placeholder="time,open,high,low,close,volume"></textarea><p class="cost-note">TradingView 차트 메뉴의 ‘차트 데이터 내보내기’에서 저장한 CSV를 선택하세요. 파일 이름에 거래소와 종목이 있으면 자동으로 채웁니다. 최대 5,000행이며 시가·고가·저가·종가가 필요합니다.</p></div>
@@ -16,11 +17,18 @@
  <div class="field-pair"><div><label for="chart-fee" class="field-label">체결당 수수료 (%)</label><input id="chart-fee" type="number" min="0" max="10" step="0.01" value="0.05"></div><div><label for="chart-slip-mode" class="field-label">슬리피지 단위</label><select id="chart-slip-mode"><option value="bps">bps · 1bp = 0.01%</option><option value="ticks">틱 · 가격 단위 직접 지정</option></select></div></div><div class="field-pair"><div><label for="chart-slip" class="field-label">슬리피지 (bps / 틱)</label><input id="chart-slip" type="number" min="0" max="100" step="1" value="5"></div><div><label for="chart-tick" class="field-label">1틱 가격 · 틱 선택 시</label><input id="chart-tick" type="number" min="0.00000001" step="any" placeholder="예: 0.01"></div></div>
  <div class="field-pair"><div><label for="chart-start" class="field-label">진입 시작일 · UTC</label><input id="chart-start" type="date"></div><div><label for="chart-end" class="field-label">진입 종료일 · UTC</label><input id="chart-end" type="date"></div></div><label for="chart-train" class="field-label">앞 구간 비중 (%) · 뒤 구간은 별도 검증</label><input id="chart-train" type="number" min="50" max="90" value="70"><p class="cost-note">봉 마감에 신호를 만들고 다음 관측 시가에 체결합니다. 롱만 사용하며 추가 매수·자동 최적화는 하지 않습니다.</p></details>
  <button id="chart-submit" class="button primary start-button" type="submit">차트 불러오기 · 전략 검증 ↗</button><p id="chart-feedback" class="feedback" role="status">AI 호출 없이 데이터를 조회하고 계산합니다.</p></form>
- <div class="lab-main"><section class="panel market-overview" aria-labelledby="market-heading"><div class="market-overview-head"><div><span class="section-kicker">MARKET INDICES</span><h2 id="market-heading">시장 지수</h2></div><div class="market-pickers"><div class="market-region" role="group" aria-label="시장 지역"><button class="chip" type="button" data-index-region="kr" aria-pressed="true">국내</button><button class="chip" type="button" data-index-region="us" aria-pressed="false">미국</button></div><select id="market-index" aria-label="시장 지수 선택"><option value="^KS11">코스피</option><option value="^KQ11">코스닥</option></select></div></div><p id="market-index-info" class="small-muted" aria-live="polite"></p><canvas id="market-index-curve" role="img" aria-label="선택한 지수의 최근 3개월 종가" hidden></canvas><button type="button" id="market-index-retry" class="text-button" hidden>다시 조회</button></section><section class="panel lab-chart-panel"><div class="lab-chart-title"><div><span class="section-kicker">02 — PRICE & SIGNALS</span><h2 id="chart-title">가격을 먼저 확인하세요.</h2><p id="chart-provenance">데이터를 불러오면 실제 캔들과 지표가 표시됩니다.</p></div><div class="chart-actions"><button type="button" id="chart-indicator-jump" class="text-button">개인 지표 · 추세선 ↓</button><a id="chart-tv-link" class="text-button" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener noreferrer">TradingView 열기 ↗</a></div></div>
+ <div class="lab-main"><section class="panel market-overview" aria-labelledby="market-heading"><div class="market-overview-head"><div><span class="section-kicker">MARKET INDICES</span><h2 id="market-heading">시장 지수</h2></div><div class="market-pickers"><div class="market-region" role="group" aria-label="시장 지역"><button class="chip" type="button" data-index-region="kr" aria-pressed="true">국내</button><button class="chip" type="button" data-index-region="us" aria-pressed="false">미국</button></div><select id="market-index" aria-label="시장 지수 선택"><option value="^KS11">코스피</option><option value="^KQ11">코스닥</option></select></div></div><p id="market-index-info" class="small-muted" aria-live="polite"></p><div id="market-index-plot" hidden><div class="market-index-legend"><strong id="market-index-mode">일봉</strong><span id="market-index-values"></span></div><canvas id="market-index-curve" height="152" tabindex="0" role="img" aria-label="시장 지수 일봉" aria-describedby="market-index-values"></canvas><div class="market-index-legend market-atr-legend"><strong>ATR (14)</strong><span id="market-index-atr-value"></span></div><canvas id="market-index-atr" height="80" tabindex="0" role="img" aria-label="시장 지수 ATR 14일, 단위 포인트" aria-describedby="market-index-atr-value"></canvas></div><button type="button" id="market-index-retry" class="text-button" hidden>다시 조회</button></section><section class="panel lab-chart-panel"><div class="lab-chart-title"><div><span class="section-kicker">02 — PRICE & SIGNALS</span><h2 id="chart-title">가격을 먼저 확인하세요.</h2><p id="chart-provenance">데이터를 불러오면 실제 캔들과 지표가 표시됩니다.</p></div><div class="chart-actions"><button type="button" id="chart-indicator-jump" class="text-button">개인 지표 · 추세선 ↓</button><a id="chart-tv-link" class="text-button" href="https://www.tradingview.com/chart/" target="_blank" rel="noopener noreferrer">TradingView 열기 ↗</a></div></div>
+ <section id="chart-desktop-help" class="chart-desktop-help" aria-labelledby="chart-desktop-help-title" hidden>
+   <h3 id="chart-desktop-help-title">TradingView Desktop 연결하기</h3>
+   <p id="chart-desktop-next" role="status"></p>
+   <label id="chart-help-target-block" for="chart-help-target" hidden>이 종목을 표시할 Desktop 탭<select id="chart-help-target"></select></label>
+   <div class="chart-actions"><button type="button" id="chart-help-launch" class="button primary compact">Desktop 연결 실행</button><button type="button" id="chart-help-retry" class="button ghost compact">연결 확인 · 차트 조회</button><a id="chart-help-install" class="text-button" href="https://www.tradingview.com/desktop/" target="_blank" rel="noopener noreferrer">Desktop 설치 ↗</a></div>
+   <button id="chart-help-yahoo" type="button" class="text-button">이 종목을 Yahoo Finance로 조회</button>
+ </section>
  <div class="chart-toggles">
    <fieldset class="chart-overlay-field"><legend>가격 차트 표시</legend><div id="chart-overlays" class="chart-overlay-options"></div></fieldset>
    <div class="chart-osc-choice"><label for="chart-subindicator">보조지표</label><select id="chart-subindicator"></select></div>
- </div><p id="chart-overlay-note" class="chart-series-note" hidden></p>
+ </div><div id="chart-personal-overlay" class="chart-actions" hidden><strong id="chart-personal-name"></strong><span id="chart-personal-status" class="small-muted" aria-live="polite"></span><button id="chart-personal-remove" type="button" class="text-button">지표 해제</button></div><p id="chart-overlay-note" class="chart-series-note" hidden></p>
  <div class="price-canvas-wrap"><canvas id="price-canvas" aria-label="실제 OHLCV 가격 차트"></canvas><div id="chart-empty">차트 데이터가 아직 없습니다.<br><small>왼쪽에서 종목과 전략을 선택해 시작하세요.</small></div></div><p id="chart-cursor" class="chart-cursor"></p><details id="chart-overlay-readout" class="chart-overlay-readout"><summary>가격 지표 값</summary><div id="chart-overlay-values"></div></details><div class="chart-indicator-strip"><span id="chart-indicator-period"></span><div id="chart-indicator-values"></div></div><p id="chart-indicator-note" class="chart-series-note" hidden></p><canvas id="indicator-canvas" role="img" aria-label="보조지표 차트"></canvas><div class="chart-navigation"><label>확대 <input id="chart-visible" aria-label="표시할 봉 수" type="range" min="30" max="500" value="150"></label><label>시간 이동 <input id="chart-position" aria-label="차트 구간 이동" type="range" min="0" max="100" value="100"></label></div><div id="chart-latest" class="chart-latest"></div></section>
  <section id="backtest-result" class="panel backtest-panel" hidden><div class="panel-heading"><div><span class="section-kicker">03 — LOCAL BACKTEST</span><h2>가설을 숫자로 확인하기</h2></div><span class="lab-badge">앱 자체 OHLCV 계산</span></div><p class="cost-note">TradingView Strategy Tester 실행 결과가 아닙니다. 자산 곡선에는 미실현 손익이 포함됩니다.</p><div id="chart-metrics" class="chart-metrics"></div><canvas id="equity-canvas" aria-label="미실현 손익 포함 자산 곡선"></canvas><div id="chart-validation" class="chart-validation"></div><details><summary>체결 기록 · 신호와 실행 시점</summary><div class="chart-table-scroll"><table><thead><tr><th>진입 체결</th><th>청산 체결</th><th>진입가</th><th>청산가</th><th>비용 차감 수익률</th></tr></thead><tbody id="chart-trades"></tbody></table></div></details></section>
  <section id="chart-conclusion" class="panel chart-conclusion" hidden><div class="panel-heading"><div><span class="section-kicker">04 — SAVE & INTERPRET</span><h2>데이터에서 해석으로</h2></div><span id="chart-saved-status" class="saved-chip">Second Brain에 저장됨</span></div><div class="chart-actions"><button type="button" id="chart-save-preview" class="button primary" hidden>이 차트를 Second Brain에 저장</button><button id="chart-ask" class="button primary" type="button">기술 분석 에이전트에게 질문 ↗</button><span id="chart-watch-actions"></span><a id="chart-json" class="button ghost" download>원본 결과 JSON ↓</a><a id="chart-pine" class="button ghost" download>Pine Script ↓</a></div><p class="cost-note">Pine은 표준 일봉용입니다. TradingView 컴파일·실행은 확인 전이며, bps 슬리피지는 Pine에서 1틱 가정으로 바뀝니다. AI 해석은 질문을 확인하고 시작 버튼을 눌렀을 때만 호출합니다.</p><details><summary>데이터 품질·계산 가정·한계</summary><ul id="chart-warnings"></ul><pre id="chart-assumptions"></pre></details></section></div></div>`;
@@ -65,8 +73,33 @@
    return Array.from($('chart-overlays').querySelectorAll('input:checked'), input=>input.dataset.overlay);
  }
  let current=null,hover=-1,sourceRestoreNote='',appliedSettings={};
+ let personalPlan=null, personalStudy=null;
+ function calculatePersonal() {
+   personalStudy=null;
+   $('chart-personal-overlay').hidden=!personalPlan;
+   if(!personalPlan)return;
+   $('chart-personal-name').textContent=personalPlan.title;
+   if(current){
+     personalStudy=window.HyperpassLocalIndicators.calculate(personalPlan,current.candles,current.timeframe);
+     $('chart-personal-status').textContent=personalStudy.message;
+   }else $('chart-personal-status').textContent='가격 봉을 불러오면 이 지표를 계산합니다.';
+ }
+ function applyPersonalIndicator(name,code){
+   let next;
+   try { next=window.HyperpassLocalIndicators.compile(code); }
+   catch(error){throw Error('현재 차트에 적용하지 못했습니다. '+error.message+' 전체 Pine 코드는 아래 Desktop 실행을 이용하세요.');}
+   personalPlan={...next,title:name||next.title};
+   calculatePersonal();
+   drawPrice();
+   const title=current?$('chart-title').textContent:'종목 차트';
+   return title+' · '+personalPlan.title+' · '+$('chart-personal-status').textContent;
+ }
+ $('chart-personal-remove').addEventListener('click',()=>{
+   personalPlan=null;calculatePersonal();drawPrice();
+ });
  const sourceLabels={yahoo:'Yahoo Finance',tradingview:'TradingView Desktop',csv:'TradingView CSV','tradingview-csv':'TradingView CSV'};
  let chartVersion=0, chartTimer, waiting=null, composing=false;
+ let connectUntil=0, connectTimer, launchingDesktop=false;
  const loading=new Set();
  const fmt=(x,d=2)=>Number.isFinite(x)?x.toLocaleString('ko-KR',{maximumFractionDigits:d,minimumFractionDigits:d}):'—';
  const pct=x=>Number.isFinite(x)?`${x>0?'+':''}${fmt(x)}%`:'계산 대상 없음';
@@ -133,7 +166,11 @@
    const {start,end}=chartRange(), i=hover>=start && hover<end?hover:end-1;
    const groups=enabledOverlays(), container=$('chart-overlay-values');
    container.replaceChildren();
-   if(!groups.length){container.textContent='가격 차트에 표시할 지표를 선택하세요.';return;}
+   if(!groups.length && !personalStudy){container.textContent='가격 차트에 표시할 지표를 선택하세요.';return;}
+   for(const line of personalStudy?.lines||[]){
+     const row=node('div','chart-overlay-value',personalPlan.title+' · '+line.label+' '+fmt(line.values[i]));
+     row.style.setProperty('--trace',line.color);container.append(row);
+   }
    for(const group of groups){
      const row=node('div','chart-overlay-value',overlayReading(group,current.indicators,current.settings,i));
      row.dataset.group=group; container.append(row);
@@ -144,10 +181,11 @@
   if(!current)return;
   const {start,end,k}=chartRange(),bars=current.candles.slice(start,end),plotW=w-65,priceH=265;
   const active=enabledOverlays(), ind=current.indicators;
-  const priceLines=active.flatMap(key=>overlays[key].lines.map(([name,color])=>({name,color,dash:overlays[key].dash || []})));
+  const priceLines=active.flatMap(key=>overlays[key].lines.map(([name,color])=>({values:ind[name]||[],color,dash:overlays[key].dash || []})));
+  for(const line of personalStudy?.lines||[]) priceLines.push({...line,dash:[]});
   let low=Math.min(...bars.map(b=>b.low)),high=Math.max(...bars.map(b=>b.high));
   for(const line of priceLines){
-    for(const v of (ind[line.name] || []).slice(start,end)){
+    for(const v of line.values.slice(start,end)){
       if(Number.isFinite(v)){low=Math.min(low,v);high=Math.max(high,v);}
     }
   }
@@ -166,10 +204,14 @@
       ctx.globalAlpha=.35;ctx.fillRect(x(i)-candleW/2,h-22-b.volume/volMax*45,candleW,b.volume/volMax*45);ctx.globalAlpha=1;
     }
   }
-  for(const {name,color,dash} of priceLines){
-    ctx.setLineDash(dash);plotLine(ctx,ind[name],start,end,x,y,color);
+  for(const {values,color,dash,width} of priceLines){
+    ctx.setLineDash(dash);plotLine(ctx,values,start,end,x,y,color,width);
   }
   ctx.setLineDash([]);
+  for(const point of personalStudy?.points||[]){
+    if(point.index<start || point.index>=end)continue;
+    ctx.fillStyle=personalPlan.color;ctx.beginPath();ctx.arc(x(point.index),y(point.high),2.5,0,Math.PI*2);ctx.fill();
+  }
   const missing=active.filter(key=>key==='volume'
     ? !bars.some(b=>Number.isFinite(b.volume))
     : !overlays[key].lines.some(([name])=>(ind[name] || []).slice(start,end).some(Number.isFinite)));
@@ -270,7 +312,11 @@
   }
  }
  function storageState(result){
-  const p=result.provenance;$('chart-provenance').textContent=`${sourceLabels[result.provider]||result.provider} · ${p.bars}봉 · ${p.first_time.slice(0,10)} — ${p.last_time.slice(0,10)} · ${p.currency} · ${result.preview?'미리보기':'저장됨'}`;
+  const p=result.provenance;
+  const delayed=result.provider==='tradingview' && /^KRX_DLY:/i.test(result.source_packet?.observed_symbol||'');
+  $('chart-provenance').textContent=[sourceLabels[result.provider]||result.provider,`${p.bars}봉`,
+    p.first_time.slice(0,10)+' — '+p.last_time.slice(0,10),p.currency,delayed?'KRX 지연 시세':null,
+    result.preview?'미리보기':'저장됨'].filter(Boolean).join(' · ');
   $('chart-conclusion').hidden=false;
   $('chart-save-preview').hidden=!result.preview;
   $('chart-save-preview').disabled=false;
@@ -285,7 +331,7 @@
   const b=result.backtest;$('backtest-result').hidden=!b;
   if(b){$('chart-metrics').replaceChildren();const m=b.metrics;metric($('chart-metrics'),'총수익률 · 평가손익 포함',pct(m.total_return_pct),m.total_return_pct>=0?'positive':'negative');metric($('chart-metrics'),'최대 낙폭',pct(m.max_drawdown_pct),'negative');metric($('chart-metrics'),'완결 거래',String(m.closed_trades));metric($('chart-metrics'),'승률',Number.isFinite(m.win_rate_pct)?fmt(m.win_rate_pct)+'%':'완결 거래 없음');$('chart-validation').replaceChildren();metric($('chart-validation'),'뒤 구간 별도 검증',pct(b.out_of_sample?.metrics?.total_return_pct));metric($('chart-validation'),'비용 2배 가정',pct(b.cost_stress?.metrics?.total_return_pct));metric($('chart-validation'),'동일 구간 단순 보유',pct(m.buy_hold_return_pct));metric($('chart-validation'),'종료 시 포지션',b.open_position?'미청산 · 평가손익 포함':'보유 없음');$('chart-trades').replaceChildren();for(const t of b.trades){const tr=node('tr');for(const v of [t.entry_time.slice(0,10),t.exit_time.slice(0,10),fmt(t.entry_price),fmt(t.exit_price),pct(t.return_pct)])tr.append(node('td','',v));$('chart-trades').append(tr);}if(!b.trades.length){const tr=node('tr'),td=node('td','','이 구간에는 완결 거래가 없습니다.');td.colSpan=5;tr.append(td);$('chart-trades').append(tr);}}
   if(restoreForm)applySettings(result.settings);
-  drawPrice();if(b)drawEquity();if(!result.preview)window.HyperpassBrain?.refresh();
+  calculatePersonal();drawPrice();if(b)drawEquity();if(!result.preview)window.HyperpassBrain?.refresh();
   document.dispatchEvent(new CustomEvent('hyperpass:chart-result',{detail:result}));
   if(result.preview)$('chart-watch-actions').hidden=true;
  }
@@ -293,11 +339,12 @@
  // Only the latest selection may render. Desktop requests also run in order
  // because two simultaneous symbol changes would operate on the same chart tab.
  function invalidateChart(){
-   clearTimeout(chartTimer);waiting=null;
+   clearTimeout(chartTimer);clearTimeout(connectTimer);waiting=null;
+   $('chart-desktop-help').hidden=true;
    return ++chartVersion;
  }
  function showChartState(title,detail,error=false){
-   current=null;hover=-1;
+   current=null;hover=-1;calculatePersonal();
    $('chart-title').textContent=title;
    $('chart-provenance').textContent=detail;
    $('chart-provenance').classList.toggle('error-text',error);
@@ -362,7 +409,12 @@
      }
      render(result);
      feedback(result.preview?'차트를 불러왔습니다. 보관하려면 이 차트를 Second Brain에 저장하세요.':'조회·계산·Second Brain 저장을 마쳤습니다.');
-   }catch(error){if(live())showChartState(job.title,error.message,true);}
+   }catch(error){
+     if(live()){
+       showChartState(job.title,error.message,true);
+       if(error.desktopConnection)showDesktopHelp(error.desktopConnection, job.version);
+     }
+   }
    finally{
      loading.delete(job.source);
      if(waiting?.version===chartVersion && waiting.source===job.source){const next=waiting;waiting=null;loadChart(next);}
@@ -384,8 +436,12 @@
    }
  }
  $('chart-save-preview').addEventListener('click',saveCurrent);
- $('chart-form').addEventListener('submit',event=>{event.preventDefault();scheduleChart({save:true});});
+ $('chart-form').addEventListener('submit',event=>{
+   event.preventDefault();
+   scheduleChart({save:event.submitter?.id==='chart-submit'});
+ });
  $('chart-source').addEventListener('change',()=>{
+   connectUntil=0;
    sourceRestoreNote='';const source=$('chart-source').value;
    if(source==='csv'){
      $('chart-symbol').value='';
@@ -404,6 +460,30 @@
    $(id).addEventListener('change',()=>scheduleChart());
  $('chart-csv').addEventListener('input',()=>scheduleChart({delay:500}));
  $('chart-strategy').addEventListener('change',rule);$('chart-slip-mode').addEventListener('change',costMode);
+ function showDesktopHelp(state,version){
+   if(version!==chartVersion || $('chart-source').value!=='tradingview')return;
+   $('chart-desktop-help').hidden=false;
+   const hasTabs=state==='choose_tab';
+   $('chart-help-target-block').hidden=!hasTabs;
+   $('chart-help-launch').hidden=hasTabs||state==='open_chart';
+   $('chart-help-install').hidden=hasTabs||state==='open_chart';
+   $('chart-help-yahoo').hidden=!$('chart-symbol').value.trim();
+   const selected=$('chart-target');
+   if(hasTabs){
+     $('chart-help-target').replaceChildren(...Array.from(selected.options,opt=>new Option(opt.textContent,opt.value)));
+     $('chart-help-target').value=selected.value;
+   }
+   const instructions={
+     choose_tab:'아래에서 실습용 탭을 선택하세요. 그 탭이 입력한 종목으로 바뀌면 오른쪽에 실제 봉이 표시됩니다.',
+     open_chart:'Desktop에서 로그인하고 종목 차트 탭을 하나 연 뒤 연결을 확인하세요.',
+     disconnected:'Desktop 연결 실행을 누른 뒤 TradingView에서 종목 차트를 하나 여세요. 평소 방식으로 켠 Desktop이 이미 열려 있다면 작업을 저장하고 앱을 완전히 종료한 뒤 다시 누르세요.'
+   };
+   $('chart-desktop-next').textContent=instructions[state]||instructions.disconnected;
+   if(connectUntil>Date.now()&&!hasTabs && !document.getElementById('workspace-chart').hidden){
+     $('chart-desktop-next').textContent+=' 열린 차트를 잠시 기다리며 연결을 다시 확인합니다.';
+     connectTimer=setTimeout(()=>{if(version===chartVersion)scheduleChart();},2500);
+   }
+ }
  async function desktopStatus(version){
    const port=Number($('chart-port').value);
    if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('Desktop 연결 포트는 1024~65535 사이로 입력하세요.');
@@ -419,9 +499,14 @@
      const targets=Array.isArray(data.targets)?data.targets:[],select=$('chart-target');
      select.replaceChildren(new Option('조회할 탭 선택',''),...targets.map(t=>new Option(t.title||'차트 탭',t.id)));
      select.value=targets.some(t=>t.id===previous)?previous:(data.connected?data.target_id:'')||'';
-     $('chart-target-block').hidden=targets.length<2;
+     $('chart-target-block').hidden=targets.length===0||(data.connected&&targets.length===1);
      if(previous && data.target_id!==previous && data.connected)throw new Error('선택한 Desktop 차트 창을 다시 확인하세요.');
-     if(!data.connected||!data.chart?.symbol||!data.target_id)throw new Error(data.message||'Desktop을 연결 실행하고 차트를 연 뒤 다시 확인하세요.');
+     if(!data.connected||!data.chart?.symbol||!data.target_id){
+       const error=new Error(data.message||'Desktop을 연결 실행하고 차트를 연 뒤 다시 확인하세요.');
+       error.desktopConnection=data.connection_state||(targets.length?'choose_tab':'disconnected');
+       throw error;
+     }
+     connectUntil=0;
      const symbol=data.chart.symbol;
      display.textContent='연결됨 · '+symbol+' · '+(data.chart.timeframe||'주기 미확인');
      return data;
@@ -436,10 +521,44 @@
  $('chart-target').addEventListener('change',()=>{if($('chart-source').value==='tradingview')scheduleChart();else desktopSymbol(false).catch(()=>{});});
  $('chart-port').addEventListener('change',()=>{$('chart-target').replaceChildren();if($('chart-source').value==='tradingview')scheduleChart();else desktopSymbol(false).catch(()=>{});});
  $('chart-use-desktop').addEventListener('click',()=>desktopSymbol(true).catch(error=>feedback(error.message,true)));
- $('chart-desktop-launch').addEventListener('click',async()=>{
-   try{const status=await window.HyperpassApp.api('/api/tradingview/launch',{method:'POST',body:{port:Number($('chart-port').value)}});
-     $('chart-desktop-status').textContent=status.message||'Desktop 실행 후 열린 종목 가져오기를 누르세요.';if($('chart-source').value==='tradingview')scheduleChart();
-   }catch(error){$('chart-desktop-status').textContent=error.message;}
+ $('chart-help-target').addEventListener('change',()=>{
+   $('chart-target').value=$('chart-help-target').value;
+   $('chart-target').dispatchEvent(new Event('change'));
+ });
+ $('chart-help-retry').addEventListener('click',()=>scheduleChart());
+ $('chart-help-yahoo').addEventListener('click',()=>{
+   $('chart-source').value='yahoo';$('chart-source').dispatchEvent(new Event('change'));
+ });
+ async function launchDesktop(){
+   if(launchingDesktop)return;
+   const port=Number($('chart-port').value);
+   const source=$('chart-source').value;
+   const stillHere=()=>Number($('chart-port').value)===port && $('chart-source').value===source;
+   launchingDesktop=true;
+   $('chart-help-launch').disabled=$('chart-desktop-launch').disabled=true;
+   const message='Desktop을 연결하는 중입니다. 열린 Desktop 창에서 종목 차트를 확인하세요.';
+   $('chart-desktop-next').textContent=$('chart-desktop-status').textContent=message;
+   try{
+     const status=await window.HyperpassApp.api('/api/tradingview/launch',{method:'POST',body:{port}});
+     if(!stillHere())return;
+     $('chart-desktop-status').textContent=status.message||'Desktop에서 종목 차트를 여세요.';
+     if(source==='tradingview'){connectUntil=Date.now()+60000;scheduleChart();}
+   }catch(error){
+     if(!stillHere())return;
+     $('chart-desktop-status').textContent=error.message;
+     if(source==='tradingview'&&!current){
+       showDesktopHelp('disconnected',chartVersion);
+       $('chart-desktop-next').textContent=error.message;
+     }
+   }finally{
+     launchingDesktop=false;
+     $('chart-help-launch').disabled=$('chart-desktop-launch').disabled=false;
+   }
+ }
+ $('chart-desktop-launch').addEventListener('click',launchDesktop);
+ $('chart-help-launch').addEventListener('click',launchDesktop);
+ document.addEventListener('hyperpass:workspace-change',event=>{
+   if(event.detail.name!=='chart'){clearTimeout(connectTimer);connectUntil=0;}
  });
  $('chart-csv-file').addEventListener('change',async()=>{
    const file=$('chart-csv-file').files[0];if(!file)return;
@@ -464,24 +583,112 @@
  for(const input of document.querySelectorAll('[data-overlay]'))input.addEventListener('change',drawPrice);
  $('chart-overlay-readout').addEventListener('toggle',drawOverlayReadout);
  $('chart-subindicator').addEventListener('change',drawIndicator);for(const id of ['chart-visible','chart-position'])$(id).addEventListener('input',drawPrice);
- $('price-canvas').addEventListener('mousemove',event=>{if(!current)return;const {start,end,k}=chartRange(),box=$('price-canvas').getBoundingClientRect();hover=Math.max(start,Math.min(end-1,start+Math.floor((event.clientX-box.left-12)/(box.width-80)*k)));const b=current.candles[hover];$('chart-cursor').textContent=`${b.timestamp.slice(0,10)}  O ${fmt(b.open)}  H ${fmt(b.high)}  L ${fmt(b.low)}  C ${fmt(b.close)}  V ${fmt(b.volume,0)}`;drawPrice();});
+ function barLabel(index) {
+   const time=current.candles[index].timestamp;
+   return /^(?:1)?(?:D|d|W|wk|M|mo)$/.test(current.timeframe)?time.slice(0,10):time.slice(0,16).replace('T',' ')+' UTC';
+ }
+ $('price-canvas').addEventListener('mousemove',event=>{
+   if(!current)return;
+   const {start,end,k}=chartRange(),box=$('price-canvas').getBoundingClientRect();
+   hover=Math.max(start,Math.min(end-1,start+Math.floor((event.clientX-box.left-12)/(box.width-80)*k)));
+   const bar=current.candles[hover], pivot=personalStudy?.points.find(point=>point.index===hover);
+   let info=barLabel(hover)+'  O '+fmt(bar.open)+'  H '+fmt(bar.high)+'  L '+fmt(bar.low)+'  C '+fmt(bar.close)+'  V '+fmt(bar.volume,0);
+   if(pivot) info+=' · 사후 표시 고점 '+fmt(pivot.high)+' · 확정 봉 '+barLabel(pivot.confirmedAt)+' 마감 후 확인';
+   $('chart-cursor').textContent=info;
+   drawPrice();
+ });
  $('price-canvas').addEventListener('mouseleave',()=>{hover=-1;$('chart-cursor').textContent='';drawPrice();});$('chart-ask').addEventListener('click',async()=>{const saved=await saveCurrent();if(saved)window.HyperpassApp.useChart(saved);});
  new ResizeObserver(()=>{if(!host.hidden){drawPrice();if(current?.backtest)drawEquity();}}).observe($('price-canvas'));
  const indexGroups={kr:[['^KS11','코스피'],['^KQ11','코스닥']],us:[['^IXIC','나스닥 종합'],['^GSPC','S&P 500'],['^DJI','다우존스 산업평균']]};
- let indexRequest=0,indexSeries=[];
+ let indexRequest=0,indexSeries=[],indexCursor=-1;
+ const indexPriceHeight=144,indexAtrHeight=82,indexAxisWidth=67,indexInset=7;
+ const indexCanvas=$('market-index-curve'),atrCanvas=$('market-index-atr'),indexPlot=$('market-index-plot');
+ function indexPane(canvas,height,values,ticks,dateAxis){
+   const {ctx,w}=surface(canvas.id,height);
+   const right=w-indexAxisWidth,bottom=height-(dateAxis?23:8),top=8;
+   const step=(right-indexInset)/indexSeries.length;
+   const x=i=>indexInset+step*(i+.5);
+   const min=Math.min(...values),max=Math.max(...values);
+   const pad=(max-min)*.08||Math.max(Math.abs(max)*.002,.01);
+   const lower=min-pad,upper=max+pad;
+   const y=v=>bottom-(v-lower)*(bottom-top)/(upper-lower);
+   ctx.lineWidth=1;ctx.textAlign='left';ctx.textBaseline='middle';
+   for(let tick=0;tick<ticks;tick++){
+     const v=lower+(upper-lower)*tick/(ticks-1),py=y(v);
+     ctx.strokeStyle='rgba(170,164,147,.16)';ctx.beginPath();ctx.moveTo(indexInset,py);ctx.lineTo(right,py);ctx.stroke();
+     ctx.fillStyle='#b6ad9b';ctx.fillText(fmt(v),right+5,py);
+   }
+   const columns=w<400?2:4;
+   for(let tick=0;tick<columns;tick++){
+     const i=Math.round(tick*(indexSeries.length-1)/(columns-1)),px=x(i);
+     ctx.strokeStyle='rgba(170,164,147,.1)';ctx.beginPath();ctx.moveTo(px,top);ctx.lineTo(px,bottom);ctx.stroke();
+     if(dateAxis){
+       ctx.fillStyle='#b6ad9b';ctx.textAlign=tick===0?'left':tick===columns-1?'right':'center';
+       ctx.fillText(indexSeries[i].date.slice(5),px,height-9);
+     }
+   }
+   return {ctx,x,y,step,top,bottom,right};
+ }
+ function indexCrosshair(pane,value){
+   if(indexCursor<0)return;
+   const {ctx,x,y,top,bottom,right}=pane,px=x(indexCursor);
+   ctx.save();ctx.strokeStyle='#c6c0b1';ctx.lineWidth=1;ctx.setLineDash([3,3]);ctx.beginPath();
+   ctx.moveTo(px,top);ctx.lineTo(px,bottom);
+   if(Number.isFinite(value)){ctx.moveTo(indexInset,y(value));ctx.lineTo(right,y(value));}
+   ctx.stroke();ctx.restore();
+ }
  function drawMarket(){
    if(!indexSeries.length||host.hidden)return;
-   const {ctx,w,h,fontFamily}=surface('market-index-curve',78);
-   const values=indexSeries.map(p=>p.close),min=Math.min(...values),max=Math.max(...values),range=max-min||1;
-   const x=i=>5+(w-10)*i/(values.length-1),y=v=>5+(max-v)*(h-26)/range;
-   ctx.strokeStyle=getComputedStyle(host).getPropertyValue('--accent')||'#ff6b1a';ctx.lineWidth=2;ctx.beginPath();
-   values.forEach((v,i)=>i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)));ctx.stroke();
-   ctx.fillStyle='#b8af9d';ctx.font='11px '+fontFamily;ctx.textAlign='left';ctx.fillText(indexSeries[0].date,4,h-2);
-   ctx.textAlign='right';ctx.fillText(indexSeries.at(-1).date,w-4,h-2);
+   const row=indexSeries[indexCursor<0?indexSeries.length-1:indexCursor],hasBars=Number.isFinite(row.open);
+   const atr=indexSeries.map(p=>p.atr14),atrValues=atr.filter(Number.isFinite);
+   $('market-index-mode').textContent=hasBars?'일봉 · 3개월':'종가 · 3개월';
+   $('market-index-values').textContent=row.date+'　'+(hasBars?'시 '+fmt(row.open)+' · 고 '+fmt(row.high)+' · 저 '+fmt(row.low)+' · ':'')+'종 '+fmt(row.close);
+   const prices=hasBars?indexSeries.flatMap(p=>[p.low,p.high]):indexSeries.map(p=>p.close);
+   const price=indexPane(indexCanvas,indexPriceHeight,prices,3,!atrValues.length);
+   const {ctx,x,y,step}=price;
+   if(hasBars){
+     const width=Math.min(12,Math.max(1,step*.66));
+     indexSeries.forEach((bar,i)=>{
+       const color=bar.close>=bar.open?'#78c7b1':'#e88c75',px=x(i);
+       ctx.lineWidth=1;ctx.strokeStyle=color;ctx.fillStyle=color;
+       ctx.beginPath();ctx.moveTo(px,y(bar.high));ctx.lineTo(px,y(bar.low));ctx.stroke();
+       ctx.fillRect(px-width/2,Math.min(y(bar.open),y(bar.close)),width,Math.max(1,Math.abs(y(bar.open)-y(bar.close))));
+     });
+   }else{
+     plotLine(ctx,prices,0,prices.length,x,y,'#ff9858',1.6);
+   }
+   indexCrosshair(price,row.close);
+   $('market-index-atr-value').textContent=!hasBars?'이 출처는 종가만 제공해 ATR을 계산할 수 없습니다.':
+     !Number.isFinite(row.atr14)?'계산에 일봉 14개가 필요합니다.':fmt(row.atr14)+' pt · '+row.date;
+   atrCanvas.hidden=!atrValues.length;
+   if(atrValues.length){
+     const pane=indexPane(atrCanvas,indexAtrHeight,atrValues,2,true);
+     plotLine(pane.ctx,atr,0,atr.length,pane.x,pane.y,'#b9a2e9',1.7);
+     indexCrosshair(pane,row.atr14);
+   }
+ }
+ for(const canvas of [indexCanvas,atrCanvas]){
+   canvas.addEventListener('pointermove',event=>{
+     if(!indexSeries.length)return;
+     const box=canvas.getBoundingClientRect(),width=box.width-indexInset-indexAxisWidth;
+     indexCursor=Math.max(0,Math.min(indexSeries.length-1,Math.floor((event.clientX-box.left-indexInset)/width*indexSeries.length)));
+     drawMarket();
+   });
+   canvas.addEventListener('pointerleave',()=>{indexCursor=-1;drawMarket();});
+   canvas.addEventListener('blur',()=>{indexCursor=-1;drawMarket();});
+   canvas.addEventListener('keydown',event=>{
+     if(!indexSeries.length||!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+     event.preventDefault();
+     const last=indexSeries.length-1,at=indexCursor<0?last:indexCursor;
+     if(event.key==='Home')indexCursor=0;
+     else if(event.key==='End')indexCursor=last;
+     else indexCursor=Math.max(0,Math.min(last,at+(event.key==='ArrowRight'?1:-1)));
+     drawMarket();
+   });
  }
  async function loadMarket(){
    const version=++indexRequest, select=$('market-index'),symbol=select.value,info=$('market-index-info');
-   indexSeries=[];$('market-index-curve').hidden=true;$('market-index-retry').hidden=true;info.textContent=select.selectedOptions[0].text+' 조회 중…';
+   indexSeries=[];indexCursor=-1;indexPlot.hidden=true;$('market-index-retry').hidden=true;info.textContent=select.selectedOptions[0].text+' 조회 중…';
    try{
      const data=await window.HyperpassApp.api('/api/market-index?symbol='+encodeURIComponent(symbol));
      if(version!==indexRequest)return;
@@ -497,7 +704,9 @@
      const when=new Date(data.retrieved_at).toLocaleString('ko-KR');
      info.append(document.createTextNode(' · '+label+' '+when+(data.notice?' · '+data.notice:'')));
      $('market-index-retry').hidden=data.cache_status!=='stale_cache';
-     $('market-index-curve').setAttribute('aria-label',data.name+' 최근 3개월 종가 추이');$('market-index-curve').hidden=false;drawMarket();
+     indexCanvas.setAttribute('aria-label',data.name+' 최근 3개월 '+(Number.isFinite(last.open)?'일봉':'종가')+' · 좌우 방향키로 날짜 이동');
+     atrCanvas.setAttribute('aria-label',data.name+' ATR 14일 · 좌우 방향키로 날짜 이동');
+     indexPlot.hidden=false;drawMarket();
    }catch(error){if(version===indexRequest){info.textContent='지수 조회 실패 · '+error.message;$('market-index-retry').hidden=false;}}
  }
  for(const button of document.querySelectorAll('[data-index-region]'))button.addEventListener('click',()=>{
@@ -507,8 +716,8 @@
  });
  $('market-index').addEventListener('change',loadMarket);$('market-index-retry').addEventListener('click',loadMarket);
  document.addEventListener('hyperpass:workspace-change',event=>{if(event.detail.name==='chart')loadMarket();});
- new ResizeObserver(drawMarket).observe($('market-index-curve'));
- window.HyperpassChart={desktopStatus,lastResult:()=>current,settings:options,applySettings,
+ new ResizeObserver(drawMarket).observe(indexCanvas);
+ window.HyperpassChart={desktopStatus,lastResult:()=>current,settings:options,applySettings,applyPersonalIndicator,
    openSymbol:async symbol=>{
      window.HyperpassApp.selectWorkspace('chart');$('chart-source').value='yahoo';sourceRestoreNote='';
      $('chart-symbol').value=symbol;$('chart-symbol').dispatchEvent(new Event('input'));

@@ -6,7 +6,7 @@
 <h2>내 컴퓨터에 설치하기</h2>
 <p>처음에는 <strong>압축 풀기 → 앱 열기 → 국내 또는 미국 종목 찾기</strong>까지만 해보세요. 여기까지는 AI 키 없이 할 수 있습니다. 에이전트에게 질문할 때 본인의 AI 서비스를 한 곳 연결합니다.</p>
 <h3>1. 내 컴퓨터에 맞는 ZIP 받기</h3>
-<p><a href="https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.3-preview">수강생 다운로드 페이지</a>를 엽니다. 아래 <strong>Assets</strong>를 펼쳐 다음 파일 중 <strong>하나</strong>를 클릭하세요. GitHub 로그인은 필요 없습니다.</p>
+<p><a href="https://github.com/rrw9002-ops/Hyperpass-Research-Web/releases/tag/v0.7.4-preview">수강생 다운로드 페이지</a>를 엽니다. 아래 <strong>Assets</strong>를 펼쳐 다음 파일 중 <strong>하나</strong>를 클릭하세요. GitHub 로그인은 필요 없습니다.</p>
 <ul>
 <li><strong>Windows 64비트</strong>는 <code>Hyperpass-Research-Web-Windows.zip</code>을 받습니다. Windows 설정 → 시스템 → 정보에서 시스템 종류를 볼 수 있습니다. 이 배포판의 검증 대상은 x64입니다.</li>
 <li><strong>Mac</strong>은 왼쪽 위 사과 메뉴 → 이 Mac에 관하여를 엽니다. <strong>칩</strong>에 Apple M1·M2·M3 등 M 시리즈가 보이면 <code>Hyperpass-Research-Web-macOS-arm64.zip</code>을 받습니다. <strong>프로세서</strong>에 Intel이 보이면 <code>Hyperpass-Research-Web-macOS-x86_64.zip</code>을 받습니다.</li>
@@ -60,9 +60,10 @@
 <p>휴장·주말에는 직전 거래 세션 자료일 수 있습니다. Yahoo는 거래소·상품에 따라 지연 자료를 제공하며 공개 데이터 연결을 일시적으로 제한할 수 있습니다. 조회 시간이 갱신돼도 가격의 거래일은 그대로일 수 있습니다. <a href="https://help.yahoo.com/kb/finance/article-exchanges-data-delays-sln2310.html">Yahoo 거래소별 데이터 및 지연 안내</a></p>
 <h3>TradingView 차트와 CSV 연결하기</h3>
 <ol>
-<li>TradingView Desktop을 설치해 실행하고 차트 하나를 엽니다. Pine 전략·개인 지표 실습은 본인 TradingView 계정에 로그인해서 진행하세요. <a href="https://www.tradingview.com/desktop/">TradingView Desktop 공식 다운로드</a></li>
-<li>앱의 <strong>차트 연구실 → 차트 데이터</strong>에서 <strong>TradingView · Desktop 차트 조회</strong>를 선택합니다. 아래 <strong>TradingView Desktop 연결</strong>을 펼쳐 <strong>Desktop 연결 실행</strong>을 누릅니다. 연결 포트는 기본 <code>9222</code>입니다. 기존 Desktop이 일반 모드로 열려 연결되지 않으면 작성 중인 차트를 저장하고 Desktop을 정상 종료한 뒤 이 버튼으로 다시 실행하세요.</li>
-<li>Desktop 창이 여러 개면 사용할 <strong>열린 차트 탭</strong>을 선택합니다. 종목명이나 코드를 입력하고 검색 결과에서 종목을 고릅니다. 오른쪽의 종목명·코드와 출처가 모두 바뀌는지 확인하세요. 예를 들어 <strong>SK하이닉스 · 000660</strong>의 TradingView 심볼은 <code>KRX:000660</code>입니다.</li>
+<li>Windows 또는 Mac에 TradingView Desktop을 설치하세요. 앱 차트를 불러오는 데 TradingView API 키는 필요 없습니다. <a href="https://www.tradingview.com/desktop/">TradingView Desktop 공식 다운로드</a></li>
+<li>Hyperpass에서 <strong>차트 연구실 → 차트 데이터 → TradingView · Desktop 차트 조회</strong>를 선택하세요. 오른쪽에 <strong>TradingView Desktop 연결하기</strong>가 보이면 <strong>Desktop 연결 실행</strong>을 누릅니다. 일반 모드로 실행 중이어서 연결되지 않으면 TradingView에서 작업을 저장하고 앱을 완전히 종료한 뒤 이 버튼을 다시 누르세요. 기본 연결 포트는 <code>9222</code>입니다.</li>
+<li>TradingView Desktop에서 종목 차트 하나를 엽니다. 로그인을 요청하면 본인 계정으로 로그인하세요. Hyperpass가 잠시 동안 열린 차트를 자동 확인합니다. 나중에 차트를 열었으면 <strong>연결 확인 · 차트 조회</strong>를 누릅니다. 사용할 탭을 선택하라는 안내가 보이면 오른쪽에서 실습에 쓸 탭을 고르세요. 그 탭의 종목·주기가 변경됩니다.</li>
+<li>Hyperpass 종목 입력란에 <code>SK하이닉스</code> 또는 <code>000660</code>을 입력하세요. 오른쪽 제목에 <strong>SK하이닉스 · 000660</strong>, 출처에 <strong>TradingView Desktop</strong>과 봉 개수가 보이면 연결에 성공한 것입니다. 상단 <strong>차트 조회</strong>로 직접 다시 불러올 수 있습니다. 남기고 싶은 차트만 <strong>이 차트를 Second Brain에 저장</strong>을 누르세요.</li>
 <li>조회되는 기간은 Desktop이 해당 차트에 로드한 봉 수에 따라 달라지며 최대 500봉입니다. 원하는 봉 주기를 지정할 때는 <strong>조회·지표에 사용할 Desktop 주기</strong>를 사용합니다. 기존 Yahoo 차트의 조회 기간을 늘려도 Desktop의 봉 수가 늘지는 않습니다.</li>
 <li>TradingView에서 내보낸 파일로 연습하려면 차트 데이터에서 <strong>TradingView · CSV 가져오기</strong>를 선택해 해당 종목의 CSV를 넣습니다. CSV의 통화·봉 주기를 실제 파일과 맞추고 조회합니다. CSV는 내보낸 시점의 자료를 재현합니다. <a href="https://www.tradingview.com/support/solutions/43000537255-how-to-export-chart-data/">TradingView 차트 데이터 내보내기</a></li>
 </ol>
@@ -97,10 +98,11 @@
 <h3>2. SK하이닉스 차트를 확인하고 보관하기</h3>
 <ol>
 <li><strong>차트 연구실</strong>에서 <strong>차트 데이터 → Yahoo Finance</strong>를 고르고 <code>SK하이닉스</code> 또는 <code>000660</code>을 입력합니다. 동명이 있으면 제안 목록에서 종목과 거래소를 확인해 고르세요.</li>
-<li>오른쪽 제목 <strong>SK하이닉스 · 000660 / 일봉</strong>과 출처·실제 봉 수를 확인합니다. 출처 또는 선택 종목을 바꾸면 새 자료를 불러오는 상태가 오른쪽에 나타납니다.</li>
+<li>오른쪽 제목 <strong>SK하이닉스 · 000660 / 일봉</strong>과 출처·실제 봉 수를 확인합니다. 직접 다시 조회하려면 종목 입력칸 바로 아래 <strong>차트 조회</strong>를 누르세요. 출처 또는 선택 종목을 바꾸면 새 자료를 불러오는 상태가 오른쪽에 나타납니다.</li>
 <li>TradingView Desktop이 연결돼 있다면 <strong>차트 데이터 → TradingView</strong>로 바꿔 보세요. 어느 창을 사용할지 물으면 실습용 차트 탭을 고릅니다. 오른쪽에 TradingView가 표시되는지 확인하세요. 실패하면 오른쪽에 표시된 오류와 Desktop 연결 상태부터 봅니다.</li>
 <li>가격 위에서 단순이동평균·볼린저 밴드를 켜고 <strong>보조지표</strong>에서 RSI 또는 MACD를 골라 보세요. 자동으로 뜬 <strong>미리보기</strong>를 나중에 다시 보려면 <strong>Second Brain에 저장</strong>을 누릅니다.</li>
-<li>차트 아래에서 기술 분석 에이전트에 근거를 연결하면 표시된 봉과 계산 결과를 바탕으로 질문할 수 있습니다. 개인 추세선이나 지표 코드는 <strong>차트 연구실 → 개인 지표·추세선</strong>에서 만들고 저장합니다. Desktop 적용은 선택한 TradingView 차트에서 확인합니다.</li>
+<li>차트 아래에서 기술 분석 에이전트에 근거를 연결하면 표시된 봉과 계산 결과를 바탕으로 질문할 수 있습니다. 고점 추세선은 <strong>개인 지표·추세선 → 1년 고점 추세선 예시 → 현재 종목 차트에 표시</strong>로 그립니다. 원래 보고 있던 종목의 캔들 위에 선과 고점 개수가 표시됩니다. 종목 차트 위의 고점에 마우스를 올리면 고점일과 확정일을 구분해 읽을 수 있습니다. 저장한 코드도 같은 방식으로 적용합니다. 개인 지표는 화면에서 확인하고, 코드 보관은 <strong>내 지표에 저장</strong>을 누르세요. 이 선은 현재 기술 분석가에게 전달하는 저장 차트에는 포함되지 않습니다.</li>
+<li>종목 위의 <strong>시장 지수</strong>에서 <strong>국내 → 코스피</strong> 또는 <strong>미국 → S&amp;P 500</strong>을 선택하세요. 일봉 위에 마우스를 올리면 그날의 가격과 아래쪽의 ATR(14)을 함께 볼 수 있습니다. ATR의 단위는 지수 포인트입니다. 종가만 제공될 때는 화면에 이유가 표시됩니다.</li>
 </ol>
 <h3>3. 실제 AI 팀에 첫 질문 보내기</h3>
 <ol>
