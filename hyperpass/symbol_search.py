@@ -296,6 +296,57 @@ def resolve_symbol(query, target="any"):
     raise ValueError("이름이나 티커에 맞는 종목을 찾지 못했습니다. 철자 또는 거래소를 확인하세요.")
 
 
+YAHOO_VENUES = {'NMS':'NASDAQ','NGM':'NASDAQ','NCM':'NASDAQ','NAS':'NASDAQ','NYQ':'NYSE','ASE':'AMEX',
+                'BTS':'BATS', 'TXS':'TXSE'}
+
+
+def _listing_identity(ticker, venue):
+    if venue == 'KRX':
+        for board in KR_BOARDS:
+            for identity, name, _, _ in kr_listings(board)[0]:
+                if identity == 'KRX:' + ticker:
+                    return identity, name
+    elif venue is None or venue in MARKETS.values():
+        if not re.fullmatch(r'[A-Z]{1,6}(?:[.-][A-Z]{1,2})?', ticker):
+            return None, None
+        hits = {}
+        for market, exchange in MARKETS.items():
+            if venue and exchange != venue:
+                continue
+            for identity, name, _ in _us_master(market)[0]:
+                if identity.split(':',1)[1].replace('.', '-') == ticker.replace('.', '-'):
+                    hits[identity] = name
+        if len(hits) == 1:
+            return next(iter(hits.items()))
+    return None, None
+
+
+def chart_identity(symbol, packet):
+    """Identify display and web chart tickers without assigning a guessed US exchange."""
+    raw = str(symbol or '').strip().upper()
+    source_name = str(packet.get('instrument_name') or '')[:180]
+    yahoo_code = re.fullmatch(r'([0-9][A-Z0-9]{5})\.(KS|KQ)', raw)
+    if yahoo_code:
+        venue, ticker = 'KRX', yahoo_code[1]
+    elif SYMBOL_ID.fullmatch(raw):
+        venue, ticker = raw.split(':',1)
+        if venue == 'KRX_DLY':
+            venue = 'KRX'
+    else:
+        venue, ticker = YAHOO_VENUES.get(packet.get('exchange_code')), raw
+    direct = _direct(venue + ':' + ticker if venue else ticker)
+    if direct:
+        return {'name':direct['name'],'ticker':direct['ticker'],'tradingview':direct['id']}
+    verified = venue + ':' + ticker.replace('-', '.') if venue in MARKETS.values() else (venue + ':' + ticker if venue else '')
+    lookup_id, name = _listing_identity(ticker,venue)
+    if not name and venue in ('BATS','CBOE'):
+        common = _direct(ticker)
+        if common and common['exchange'] in MARKETS.values():
+            name = common['name']
+    return {'name':name or source_name or '', 'ticker':ticker,
+            'tradingview':verified or lookup_id or ''}
+
+
 def chart_symbol(value, source):
     target = "tradingview" if source == "tradingview" else "yahoo"
     if isinstance(value, str):

@@ -1,7 +1,7 @@
-"""Read-only, loopback-only TradingView Desktop chart bridge (no MCP dependency).
+"""Loopback-only TradingView Desktop chart reader and selected-tab synchronization.
 
 Chart getter compatibility informed by tradesdontlie/tradingview-mcp, MIT;
-see docs/TRADINGVIEW-THIRD-PARTY-LICENSE.txt. No chart mutation is exposed.
+see docs/TRADINGVIEW-THIRD-PARTY-LICENSE.txt.
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ CHART_EXPRESSION = r"""(() => {
   if (!chart) return {error:'chart_unavailable'};
   const model = chart._chartWidget.model();
   const series = model.mainSeries();
+  if (typeof chart.dataReady === 'function' && chart.dataReady(() => {}) === false) return {error:'loading'};
   const bars = series.bars();
   const rows = [];
   const last = bars.lastIndex();
@@ -68,7 +69,7 @@ CHART_EXPRESSION = r"""(() => {
   let listed = [];
   try { listed = chart.getAllStudies().map(s => ({id:s.id,name:s.name || s.title || 'unknown'})); } catch (_) {}
   return {symbol:chart.symbol(),timeframe:String(chart.resolution()),currency:info.currency_code || info.currency || 'unknown',
-    timezone:info.timezone || 'unknown',bars:rows,studies,listed_studies:listed,total_available:bars.size()};
+    instrument_name:info.description || '',timezone:info.timezone || 'unknown',bars:rows,studies,listed_studies:listed,total_available:bars.size()};
 })()"""
 
 
@@ -236,10 +237,15 @@ def _evaluate(url, port, count):
 
 def same_chart_symbol(observed, requested):
     """KRX labels its delayed feed separately; other venues must match exactly."""
-    observed = str(observed).upper()
-    return observed == requested or (
-        requested.startswith("KRX:") and observed == "KRX_DLY:" + requested.split(":", 1)[1]
-    )
+    def canonical(value):
+        if not isinstance(value, str):
+            return ""
+        label = value.strip().upper()
+        if label.startswith("KRX_DLY:"):
+            return "KRX:" + label.split(":", 1)[1]
+        return label
+    actual = canonical(observed)
+    return bool(actual) and actual == canonical(requested)
 
 
 def _normalize(raw, symbol, count):
@@ -287,7 +293,7 @@ def _normalize(raw, symbol, count):
                        for v in values[:80] if isinstance(v, dict)] if isinstance(values, list) else [],
             "value_time": "data_window_selection_unknown"})
     return {"provider": "tradingview", "mode": "desktop-chart-cdp", "symbol": symbol, "observed_symbol": observed,
-            "records": records, "studies": normalized, "listed_studies": raw.get("listed_studies", [])[:80],
+            "instrument_name": str(raw.get("instrument_name") or "")[:180], "records": records, "studies": normalized, "listed_studies": raw.get("listed_studies", [])[:80],
             "timeframe": str(raw.get("timeframe", "unknown"))[:40], "currency": str(raw.get("currency", "unknown"))[:30],
             "chart_timezone": str(raw.get("timezone", "unknown"))[:80], "as_of": as_of,
             "retrieved_at": datetime.now(timezone.utc).isoformat(), "source_url": "https://www.tradingview.com/chart/",
@@ -334,3 +340,37 @@ def fetch_chart(port: int, symbol: str, count=100, target_id=None):
         raise
     except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException):
         raise TradingViewChartError("TradingView Desktop에 연결하지 못했습니다. 직접 켠 로컬 디버그 포트와 열린 차트를 확인하세요.") from None
+
+def fetch_selected_chart(port, symbol, count, target_id, timeframe):
+    """Chart Lab submission: select the requested listing in the pinned Desktop tab, then read it."""
+    from .tradingview_control import status, configure_chart, _same_timeframe, _validate_config
+    if (not isinstance(target_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}',target_id)
+            or not isinstance(timeframe,str)):
+        raise TradingViewChartError('Desktop의 대상 차트와 조회 주기를 확인하세요.')
+    symbol = _symbol(symbol)
+    if type(count) is not int or not 1 <= count <= 500:
+        raise TradingViewChartError('차트 봉 개수는 1–500 정수여야 합니다.')
+    _, timeframe, _ = _validate_config(None, timeframe, None)
+    observed = status(port, target_id)
+    if not observed.get('connected') or observed.get('target_id') != target_id:
+        raise TradingViewChartError(observed.get('message') or '선택한 Desktop 창이 닫혔거나 연결되지 않았습니다.')
+    chart = observed.get('chart') or {}
+    new_symbol = None if same_chart_symbol(chart.get('symbol'),symbol) else symbol
+    new_interval = None if _same_timeframe(chart.get('timeframe'),timeframe) else timeframe
+    if new_symbol or new_interval:
+        applied = configure_chart(port, symbol=new_symbol, timeframe=new_interval, target_id=target_id)
+        if applied.get('status') != 'configured' or applied.get('target_id') != target_id:
+            raise TradingViewChartError('선택한 Desktop 창의 종목·주기를 변경하지 못했습니다. 차트와 데이터 이용 권한을 확인하세요.')
+    deadline = time.monotonic() + (8 if new_symbol or new_interval else 1)
+    while True:
+        try:
+            packet = fetch_chart(port, symbol, count, target_id=target_id)
+            if not _same_timeframe(packet.get('timeframe'),timeframe):
+                raise TradingViewChartError('Desktop에서 실제로 관측한 봉 주기가 요청과 다릅니다.')
+            packet['target_id'] = target_id
+            packet['notes'][0] = '선택한 TradingView Desktop 창의 종목·주기를 확인한 뒤 실제 로드된 봉을 읽었습니다.'
+            return packet
+        except TradingViewChartError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(.3)

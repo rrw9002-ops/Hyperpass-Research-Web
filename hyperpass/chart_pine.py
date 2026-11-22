@@ -48,7 +48,7 @@ def _literal(value):
     return format(value, '.12g')
 
 
-def build_pine(settings):
+def build_pine(settings, *, account_currency=None):
     """Return a self-contained strategy script, or '' for analysis-only mode.
 
     settings uses Chart Lab's names. Unsupported strings cannot be interpolated
@@ -56,6 +56,8 @@ def build_pine(settings):
     TradingView slippage is ticks, bps-mode export explicitly uses the course's
     one-tick assumption instead of inventing a price-dependent conversion.
     """
+    if account_currency not in (None, 'KRW', 'USD'):
+        raise PineExportError('Pine 계좌 통화를 확인하세요.')
     if not isinstance(settings, dict):
         raise PineExportError('Pine 내보내기 설정 형식을 확인하세요.')
     strategy = settings.get('strategy', 'none')
@@ -104,13 +106,15 @@ def build_pine(settings):
         '// Apply manually to a standard 1D chart, verify the symbol and Strategy Tester settings.',
         '// No broker connection, alert, webhook, or real-order automation is included.',
         '// ' + slippage_note,
-        '// Currency defaults to the selected chart currency; no FX conversion is assumed.',
+        (f'// Account and chart must both use {account_currency}.' if account_currency
+         else '// Currency defaults to the selected chart currency; no FX conversion is assumed.'),
         '// Generated date defaults are UTC. TradingView displays time inputs in the chart timezone.',
         '// End-date liquidation takes priority over new entries; there is no new entry on the liquidation day.',
         '// A close order is submitted at that daily bar close, then filled on the next available tick.',
         '// If no later bar exists, the terminal order may remain unfilled; do not invent a final close.',
         '// This export is a whole-window test, not the local train/holdout or cost-stress comparison.',
         f'strategy("{names[strategy]}", overlay = true, initial_capital = {_literal(capital)},',
+        *([f'     currency = currency.{account_currency},'] if account_currency else []),
         '     default_qty_type = strategy.percent_of_equity, default_qty_value = 100,',
         f'     pyramiding = 0, commission_type = strategy.commission.percent, commission_value = {_literal(fee_bps / 100)},',
         f'     slippage = {ticks}, margin_long = 100, margin_short = 100,',
@@ -125,6 +129,9 @@ def build_pine(settings):
         '        runtime.error("The liquidation date must be later than the start date.")',
         '',
     ]
+    if account_currency:
+        lines.extend([f'if barstate.isfirst and syminfo.currency != "{account_currency}"',
+                      f'    runtime.error("Select a {account_currency} chart for these portfolio settings.")'])
     if strategy in ('trend_breakout', 'sma_cross'):
         lines += [
             f'int fastLength = input.int({fast}, "Fast SMA", minval = 2, maxval = 500)',

@@ -98,6 +98,9 @@ def complete_chart_view(chart):
     from .chart_lab import DEFAULTS, INDICATOR_GROUPS, indicators
     from .chart_indicators import EXTRA_GROUPS, enrich_chart_indicators
 
+    if not chart.get('instrument'):
+        from .symbol_search import chart_identity
+        chart['instrument'] = chart_identity(chart['symbol'], chart.get('source_packet') or {})
     saved = chart['indicators']
     candles = chart['candles']
     for groups, calculate in (
@@ -311,7 +314,11 @@ class Application:
             port=payload.get('port',9222)
             count=payload.get('count',500)
             target = payload.get('target_id')
-            packet=fetch_chart(port=port,symbol=symbol,count=count,**({'target_id':target} if target else {}))
+            if payload.get('sync_desktop') is True:
+                from .tradingview_chart import fetch_selected_chart
+                packet=fetch_selected_chart(port,symbol,count,target,payload.get('desktop_interval'))
+            else:
+                packet=fetch_chart(port=port,symbol=symbol,count=count,**({'target_id':target} if target else {}))
             packet.update(provider='tradingview',symbol=symbol,port=port,retrieved_at=now())
         elif source=='csv':
             content=payload.get('csv','')
@@ -324,6 +331,8 @@ class Application:
                     'warning':'사용자가 가져온 CSV입니다. 원본의 종목·주기·표준 캔들·가격 조정을 확인하세요.'}
         else: raise ValueError('차트 출처를 선택하세요.')
         result=analyze_chart(packet,payload.get('options'))
+        from .symbol_search import chart_identity
+        result['instrument']=chart_identity(symbol, packet)
         try: pine=build_pine(result['settings'])
         except PineExportError:
             pine=''
@@ -529,6 +538,26 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {'items':self.app.desk.watchlist()})
         if path == '/api/strategies':
             return self.send(200, {'items':self.app.desk.strategies()})
+        if path in ('/api/backtests/universe-options', '/api/backtests/example'):
+            market = parse_qs(urlsplit(self.path).query).get('market', [''])[0]
+            try:
+                if path.endswith('/example'):
+                    from .backtest_setup import per_example
+                    return self.send(200, per_example(self.app.root, market))
+                from .market_universe import universe_options
+                return self.send(200, universe_options(market))
+            except (ValueError, OSError) as exc:
+                return self.send(400, {'error': str(exc)})
+        if path == '/api/screener':
+            from .equity_screen import snapshot
+            try:
+                return self.send(200, snapshot(parse_qs(urlsplit(self.path).query).get('market', [''])[0]))
+            except (ValueError, OSError) as exc:
+                return self.send(400, {'error':str(exc)})
+        pine_report = re.fullmatch(r'/api/backtests/([a-f0-9]{32})/pine-reports/([0-9]{1,5})', path)
+        if pine_report:
+            report = self.app.desk.pine_report(pine_report[1], int(pine_report[2]))
+            return self.send(200, report) if report else self.send(404, {'error':'종목별 보고서를 찾을 수 없습니다.'})
         if path == '/api/backtests':
             return self.send(200, {'items':self.app.desk.list_jobs()})
         backtest = re.fullmatch(r'/api/backtests/([a-f0-9]{32})',path)
@@ -614,7 +643,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200,run)
         static={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
         static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js'})
-        static.update({f'/{name}':name for name in ('strategy-lab.js','strategy-lab.css','watchlist.js','watchlist.css')})
+        static.update({f'/{name}':name for name in ('strategy-lab.js','strategy-lab.css','portfolio-conditions.js','pine-batch.js','screener.js','screener.css','select-theme.js','watchlist.js','watchlist.css')})
         static.update({'/fonts/PretendardVariable.woff2': 'fonts/PretendardVariable.woff2',
                        '/fonts/OFL.txt': 'fonts/OFL.txt'})
         if path in static and static[path]:
@@ -632,10 +661,25 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(415,{'error':'JSON 요청만 허용합니다.'})
         try:
             length=int(self.headers.get('Content-Length','0'))
-            if not 0<length<=(2000000 if urlsplit(self.path).path=='/api/charts' else 300000): return self.send(413,{'error':'요청 크기를 확인해 주세요.'})
+            path = urlsplit(self.path).path
+            limits = {'/api/charts': 2000000, '/api/backtests': 48 << 20, '/api/strategies': 48 << 20,
+                      '/api/backtests/preview': 48 << 20, '/api/backtests/fundamentals/import': 48 << 20}
+            if not 0 < length <= limits.get(path, 300000):
+                return self.send(413, {'error':'요청 크기를 확인해 주세요.'})
             payload=json.loads(self.rfile.read(length))
             if not isinstance(payload,dict): raise ValueError('입력 형식 오류')
-            path=urlsplit(self.path).path
+            if path == '/api/backtests/preview':
+                if payload.get('engine') == 'pine':
+                    from .pine_batch import validate as preview
+                else:
+                    from .backtest_setup import preview
+                return self.send(200, {'request': preview(payload)})
+            if path == '/api/backtests/pine-template':
+                from .backtest_setup import pine_template
+                return self.send(200, pine_template(payload))
+            if path == '/api/backtests/fundamentals/import':
+                from .market_factors import import_fundamentals
+                return self.send(200, import_fundamentals(payload.get('market'), payload.get('csv')))
             if path == '/api/watchlist':
                 return self.send(200,self.app.desk.follow(payload))
             if path == '/api/watchlist/remove':

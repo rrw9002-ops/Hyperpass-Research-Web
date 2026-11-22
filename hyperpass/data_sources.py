@@ -9,6 +9,7 @@ import base64
 import csv
 import io
 import json
+import math
 import re
 import threading
 import time
@@ -264,17 +265,28 @@ class DataSources:
         if not records:
             raise DataSourceError("Yahoo 응답에 가격 이력이 없습니다.")
         return {"records": records[-(1600 if cfg.get('chart_lab') else 100):], "as_of": records[-1]["timestamp"], "currency": meta.get("currency", "unknown"), "timeframe": interval,
+                "instrument_name": str(meta.get("longName") or meta.get("shortName") or "")[:180], "exchange_code": str(meta.get("exchangeName") or "")[:20],
                 "warning": "Yahoo 비공식 공개 차트 경로입니다. 차단·변경될 수 있으며 일봉 OHLC는 별도 배당 조정 수익률이 아닙니다.", "source_url": url}
 
     def chart_history(self, symbol, period='2y', interval='1d'):
         symbol = self._symbol(symbol)
         result = self._fetch_yahoo(symbol, {'range':period,'interval':interval,'chart_lab':True})
-        empty=[r for r in result['records'] if all(r.get(k) is None for k in ('open','high','low','close','volume'))]
-        if empty:
-            result['excluded_rows']=empty
-            result['records']=[r for r in result['records'] if not all(r.get(k) is None for k in ('open','high','low','close','volume'))]
-            dates=', '.join(r['timestamp'][:10] for r in empty[:8])
-            result['warning']+=f' 모든 OHLCV 값이 비어 있는 {len(empty)}행({dates})은 계산에서 제외하고 원본 기록에 보존했습니다. 값을 보간하지 않았으며 관측 공백이 결과에 영향을 줄 수 있습니다.'
+        accepted, excluded = [], []
+        for row in result['records']:
+            prices = [row.get(k) for k in ('open', 'high', 'low', 'close')]
+            if all(type(p) in (int, float) and math.isfinite(p) and p > 0 for p in prices):
+                opening, high, low, closing = prices
+                tolerance = high * 1e-10
+                if low <= high and low - tolerance <= min(opening, closing) and max(opening, closing) <= high + tolerance:
+                    accepted.append(row)
+                    continue
+            excluded.append(row)
+        if excluded:
+            result['excluded_rows'] = excluded
+            result['records'] = accepted
+            dates = ', '.join(r['timestamp'][:10] for r in excluded[:8])
+            result['warning'] += (f' 가격이 누락되거나 고가·저가와 맞지 않는 {len(excluded)}봉({dates})을 제외했습니다.'
+                                  ' 원본 행은 기록에 보존했습니다. 관측 공백이 계산 결과에 영향을 줄 수 있습니다.')
         return dict(result, provider='yahoo', symbol=symbol, retrieved_at=_utc())
 
     def _fetch_openbb(self, symbol, cfg):

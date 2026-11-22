@@ -11,6 +11,9 @@
   <link rel="stylesheet" href="/workspaces.css">
   <link rel="stylesheet" href="/watchlist.css">
   <link rel="stylesheet" href="/strategy-lab.css">
+  <link rel="stylesheet" href="/screener.css">
+  <script src="/select-theme.js" defer></script>
+  <script src="/screener.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="/brain.js" defer></script>
   <script src="/chart.js" defer></script>
@@ -19,6 +22,8 @@
   <script src="/tradingview.js" defer></script>
   <script src="/indicator-lab.js" defer></script>
   <script src="/watchlist.js" defer></script>
+  <script src="/pine-batch.js" defer></script>
+  <script src="/portfolio-conditions.js" defer></script>
   <script src="/strategy-lab.js" defer></script>
 </head>
 <body>
@@ -26,7 +31,7 @@
 <div class="app-shell">
   <header class="topbar">
     <a class="brand" href="/" aria-label="Hyperpass 홈"><span class="brand-mark">H<span>↗</span></span><span>HYPERPASS<small>RESEARCH UNIVERSE</small></span></a>
-    <nav class="workspace-nav" aria-label="작업 공간"><button type="button" data-workspace="research" class="selected" aria-pressed="true">리서치 팀</button><button type="button" data-workspace="chart">차트 연구실</button><button type="button" data-workspace="tradingview">백테스트</button><button type="button" data-workspace="brain">Second Brain</button><button type="button" data-workspace="team">팀 구성</button></nav>
+    <nav class="workspace-nav" aria-label="작업 공간"><button type="button" data-workspace="research" class="selected" aria-pressed="true">리서치 팀</button><button type="button" data-workspace="chart">차트 연구실</button><button type="button" data-workspace="screener">스크리너</button><button type="button" data-workspace="tradingview">백테스트</button><button type="button" data-workspace="brain">Second Brain</button><button type="button" data-workspace="team">팀 구성</button></nav>
     <div class="topbar-actions"><button id="sources-button" class="connection">데이터 연결</button><button id="connection-button" class="connection"><span id="connection-dot" class="dot"></span><span id="connection-label">연결 확인 중</span><span>⌄</span></button></div>
   </header>
   <main id="main">
@@ -55,6 +60,7 @@
     </section>
     <section id="workspace-chart" class="workspace-view" aria-label="차트 연구실" hidden><div class="workspace-heading"><div><span class="eyebrow">CHART LAB</span><h1>차트로 확인하고, 데이터로 검증하세요.</h1></div></div></section>
     <section id="workspace-brain" class="workspace-view" aria-label="Second Brain" hidden><div class="workspace-heading"><div><span class="eyebrow">YOUR RESEARCH MEMORY</span><h1>흩어진 근거를, 연결된 지식으로.</h1><p>이 앱에서 저장한 보고서와 차트 연구를 다시 열어보세요.</p></div><button id="brain-refresh" type="button" class="button ghost compact">새로고침 ↻</button></div><section class="panel watch-panel" aria-labelledby="watch-title"><div class="panel-heading"><div><span class="section-kicker">WATCHLIST</span><h2 id="watch-title">내 관심종목 <span id="watch-count"></span></h2></div><div class="watch-controls"><button type="button" id="watch-refresh" class="button ghost compact">시세 갱신</button><button type="button" id="watch-add" class="button ghost compact">＋ 종목 추가</button></div></div><div id="watch-items" class="watch-items"></div><p id="watch-feedback" class="feedback" role="status"></p></section><div class="brain-layout"><div class="brain-universe panel"><canvas id="brain-orb" class="brain-canvas" role="img" aria-label="실제 저장 기록을 연결한 지도. 동일한 기록은 오른쪽 목록에서 키보드로 열 수 있습니다."></canvas><div class="brain-universe-copy"><span class="section-kicker">SECOND BRAIN</span><h2>연구는 연결될수록 깊어집니다.</h2><p>밝은 점을 누르면 저장한 기록이 열립니다. 빈 곳을 누르거나 휠을 굴려 배율을 조절하세요.<br>확대 후 드래그로 이동하고 배율 표시를 누르면 처음 위치로 돌아갑니다.</p></div><div class="brain-counts"><div><strong data-brain-count="reports">0</strong><span>완료 보고서</span></div><div><strong data-brain-count="charts">0</strong><span>차트 연구</span></div><div><strong data-brain-count="artifacts">0</strong><span>분석 근거</span></div><div><strong data-brain-count="incomplete">0</strong><span>미완료 기록</span></div></div></div><section class="brain-library panel"><div class="panel-heading"><div><span class="section-kicker">SAVED KNOWLEDGE</span><h2>기록 보관함</h2></div><span class="small-muted">로컬 저장</span></div><div class="brain-controls"><label class="sr-only" for="brain-search">연구 기록 검색</label><input id="brain-search" type="search" placeholder="제목이나 요약으로 검색"><div id="brain-filters" class="brain-filters" role="group" aria-label="기록 유형"><button data-brain-filter="all" class="selected" aria-pressed="true">전체</button><button data-brain-filter="report" aria-pressed="false">보고서</button><button data-brain-filter="chart" aria-pressed="false">차트</button><button data-brain-filter="incomplete" aria-pressed="false">미완료</button><button data-brain-filter="sample" aria-pressed="false">샘플</button></div></div><p id="brain-feedback" class="feedback" aria-live="polite"></p><div id="brain-records" class="brain-records"></div><details class="legacy-history"><summary>분석 실행 기록 <span id="history-count">0</span></summary><nav id="history" aria-label="저장된 리서치"></nav></details></section></div></section>
+    <section id="workspace-screener" class="workspace-view" aria-label="종목 스크리너" hidden></section>
     <section id="workspace-team" class="workspace-view" aria-label="팀 구성" hidden></section>
     <section id="workspace-tradingview" class="workspace-view" aria-label="백테스트 연구실" hidden></section>
     <footer class="page-footer"><span>HYPERPASS <b>RESEARCH UNIVERSE</b></span><span>LOCAL WORKSPACE · 매매 기능 없음</span><button id="settings-side" type="button" class="text-button">연결 설정 ↗</button></footer>

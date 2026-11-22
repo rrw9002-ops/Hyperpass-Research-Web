@@ -29,7 +29,7 @@
   };
   const modeNames = {market:"시장 전체", single:"단일 종목", custom:"종목 묶음", pine:"TradingView · Pine"};
   const kindNames = {market:"포트폴리오",chart:"단일 차트",pine:"Pine 코드"};
-  const statuses = {queued:"대기",running:"진행 중",completed:"완료",failed:"실패",cancelled:"취소",interrupted:"중단"};
+  const statuses = {queued:"대기",running:"진행 중",completed:"완료",failed:"실패",cancelled:"취소",interrupted:"중단",partial:"부분 완료"};
   const running = job => job && ["queued","running"].includes(job.status);
   const defaults = {
     strategy:"trend_breakout", fast_period:20, slow_period:60, breakout_period:20, bb_period:20,
@@ -42,7 +42,7 @@
     rsi_entry:["RSI 진입 기준",1,49,"any"],initial_capital:["초기 자본",1,1e15,"any"],
     fee_bps:["편도 수수료 (bp)",0,1000,"any"],slippage_bps:["편도 슬리피지 (bp)",0,1000,"any"]
   };
-  let mode = "market", records = [], currentJob = null, pollTimer = null, requestVersion = 0;
+  let engine = "pine", mode = "single", records = [], currentJob = null, pollTimer = null, requestVersion = 0;
   let resultJob = null, pineRun = null, initialLoad = false, strategyLoad = 0, historyLoad = 0;
   let historyRows = [], pendingRequest = false, retainedSettings = {};
   const money = value => Number.isFinite(value) ? value.toLocaleString("ko-KR",{maximumFractionDigits:2}) : "—";
@@ -62,41 +62,61 @@
   panel.id = "strategy-studio";
   panel.innerHTML = `
     <div class="workspace-heading"><div><span class="eyebrow">STRATEGY RESEARCH</span><h1>백테스트 연구실</h1>
-    <p>과거에 어떤 종목을 사고팔았는지 확인하고, 거래 비용을 반영한 성과를 비교하세요.</p></div></div>
-    <div class="studio-mode" role="group" aria-label="백테스트 방식">
-      <button type="button" data-bt-mode="market">시장 전체</button><button type="button" data-bt-mode="single">단일 종목</button>
-      <button type="button" data-bt-mode="custom">종목 묶음</button><button type="button" data-bt-mode="pine">TradingView · Pine</button>
-    </div>
-    <div class="panel studio-library"><div><label for="bt-saved" class="field-label">내 전략</label>
+    <p>Pine 전략 파일을 불러오거나 코드를 붙여넣고 원하는 투자 대상에서 성과를 확인하세요.</p></div></div>
+    <div class="bt-engine-picker"><label for="bt-engine" class="field-label">검증 방식</label><select id="bt-engine">
+      <option value="pine">TradingView · Pine 전략</option><option value="portfolio">포트폴리오 · 조건 전략</option></select></div>
+    <div id="bt-library" class="panel studio-library" hidden><div><label for="bt-saved" class="field-label">내 전략</label>
     <select id="bt-saved"><option value="">저장한 전략 선택</option></select></div>
     <button type="button" class="button ghost" id="bt-load">불러오기</button><p class="feedback" id="bt-library-feedback" role="status"></p></div>
+    <section class="panel studio-settings bt-target-panel" id="bt-target-panel"><h2>투자 대상</h2>
+          <div class="bt-target-row"><div><label class="field-label" for="bt-scope">검증 범위</label>
+          <select id="bt-scope"><option value="single">단일 종목</option><option value="custom">종목 묶음</option><option value="market">시장 전체</option></select></div><div>
+            <label class="field-label" for="bt-market">국가 · 기준 통화</label>
+            <select id="bt-market"><option value="KR">국내 · KRW</option><option value="US">미국 · USD</option></select></div></div>
+            <div id="bt-single-field" hidden><label class="field-label" for="bt-symbol">종목명 또는 티커</label>
+              <input id="bt-symbol" maxlength="100" placeholder="예: 삼성전자 또는 005930" autocomplete="off" aria-describedby="bt-symbol-status">
+              <div id="bt-symbol-matches" class="tv-symbol-matches"></div><p id="bt-symbol-status" class="cost-note" role="status"></p></div>
+            <div id="bt-custom-field" hidden><label class="field-label" for="bt-symbols">검증할 종목</label>
+              <textarea id="bt-symbols" rows="3" placeholder="삼성전자, SK하이닉스, 현대차"></textarea>
+              <p class="cost-note">종목명이나 티커를 쉼표 또는 줄바꿈으로 구분하세요.</p></div>
+            <p id="bt-universe" class="cost-note"></p>
+            <div id="bt-universe-options"></div></section>
     <div id="studio-local" class="studio-grid">
-      <form id="bt-form" class="panel studio-settings">
-        <h2>검증 조건</h2><label class="field-label" for="bt-market">시장</label>
-        <select id="bt-market"><option value="KR">국내 · 원화</option><option value="US">미국 · 달러</option></select>
-        <div id="bt-single-field" hidden><label class="field-label" for="bt-symbol">종목명 또는 티커</label>
-          <input id="bt-symbol" maxlength="100" placeholder="예: 삼성전자 또는 005930" autocomplete="off" aria-describedby="bt-symbol-status">
-          <div id="bt-symbol-matches" class="tv-symbol-matches"></div><p id="bt-symbol-status" class="cost-note" role="status"></p></div>
-        <div id="bt-custom-field" hidden><label class="field-label" for="bt-symbols">검증할 종목</label>
-          <textarea id="bt-symbols" rows="3" placeholder="삼성전자, SK하이닉스, 현대차"></textarea>
-          <p class="cost-note">종목명이나 티커를 쉼표 또는 줄바꿈으로 구분하세요.</p></div>
-        <p id="bt-universe" class="cost-note"></p>
-        <div class="field-pair"><div><label class="field-label" for="bt-start">시작일</label><input id="bt-start" type="date" required></div>
-          <div><label class="field-label" for="bt-end">종료일</label><input id="bt-end" type="date" required></div></div>
-        <label class="field-label" for="bt-rule">매매 규칙</label><select id="bt-rule"></select>
-        <div class="studio-rule"><p id="bt-rule-copy"></p><small id="bt-rule-source"></small></div>
-        <details class="studio-params"><summary>신호 계산 기준</summary><div id="bt-params" class="studio-fields"></div></details>
-        <label class="field-label" for="bt-name">전략 이름</label><input id="bt-name" required maxlength="120">
-        <div id="bt-sizing"><label class="field-label" for="bt-ranking">동시에 매수 신호가 난 종목의 순위</label>
-          <select id="bt-ranking"><option value="momentum_high">최근 수익률 높은 순</option><option value="momentum_low">최근 수익률 낮은 순</option></select>
-          <div class="field-pair"><div><label class="field-label" for="bt-lookback">순위 산정 기간 (거래일)</label>
-          <input type="number" id="bt-lookback" min="2" max="252" step="1" value="20" required></div>
-          <div><label class="field-label" for="bt-positions">동시 보유 종목 수</label>
-          <input type="number" id="bt-positions" min="1" max="100" step="1" value="5" required></div></div></div>
-        <div id="bt-costs" class="studio-fields"></div><p class="cost-note">1bp는 0.01%입니다. 수수료와 슬리피지는 매수·매도에 각각 적용합니다.</p>
-        <div class="studio-actions"><button type="submit" class="button primary" id="bt-run">백테스트 실행</button>
-          <button type="button" class="button ghost" id="bt-save">내 전략에 추가</button></div>
-        <p class="feedback" id="bt-feedback" role="status"></p>
+      <form id="bt-form" class="portfolio-form">
+        <div class="portfolio-columns">
+          <section class="panel studio-settings bt-setup"><h2>기간과 자금</h2>
+            <button type="button" class="button ghost compact bt-example-load" id="bt-example-load">국내 PER 실습 불러오기</button>
+            <div id="bt-example-info" class="cost-note" hidden></div>
+            <div class="field-pair"><div><label class="field-label" for="bt-start">시작일</label><input id="bt-start" type="date" required></div>
+              <div><label class="field-label" for="bt-end">종료일</label><input id="bt-end" type="date" required></div></div>
+            <h3>운용 자금과 비용</h3>
+            <div id="bt-costs" class="studio-fields"></div><p class="cost-note">수수료와 슬리피지는 매수·매도에 각각 적용합니다. 1bp = 0.01%.</p>
+            <div id="bt-schedule"></div>
+            <div id="bt-sizing"><label class="field-label" for="bt-positions">최대 보유 종목 수</label>
+              <input type="number" id="bt-positions" min="1" max="100" step="1" value="10" required></div>
+          </section>
+          <section class="panel studio-settings bt-selection">
+            <h2>종목 선정과 매매 규칙</h2>
+            <div id="bt-condition-rules"></div>
+            <div id="bt-technical-fields"><label class="field-label" for="bt-rule">기술 신호</label><select id="bt-rule"></select>
+              <div class="studio-rule"><p id="bt-rule-copy"></p><small id="bt-rule-source"></small></div>
+              <details class="studio-params"><summary>기술 신호 계산 기준</summary><div id="bt-params" class="studio-fields"></div></details></div>
+            <div class="field-pair"><div id="bt-legacy-ranking" hidden><label class="field-label" for="bt-ranking">후보 순위</label>
+              <select id="bt-ranking"><option value="momentum_high">최근 수익률 높은 순</option><option value="momentum_low">최근 수익률 낮은 순</option></select></div>
+              <div id="bt-lookback-field"><label class="field-label" for="bt-lookback">모멘텀 산정 기간 (거래일)</label>
+              <input type="number" id="bt-lookback" min="2" max="252" step="1" value="20" required></div></div>
+            <div id="bt-fundamental-data"></div>
+            <div id="bt-code-editor"></div>
+          </section>
+        </div>
+        <section class="panel studio-settings bt-execution"><div class="bt-name-block"><label class="field-label" for="bt-name">전략 이름</label><input id="bt-name" required maxlength="120"></div>
+          <div class="studio-actions">
+            <button type="button" class="button ghost" id="bt-save">내 전략에 추가</button>
+            <button type="button" class="button ghost" id="bt-preview">실행 조건 확인</button>
+            <button type="submit" class="button primary" id="bt-run" disabled>백테스트 실행</button>
+          </div><p id="bt-preview-summary" class="portfolio-summary" hidden></p>
+          <p class="feedback" id="bt-feedback" role="status"></p>
+        </section>
       </form>
       <div class="studio-output">
         <section class="panel studio-result"><div class="studio-result-head"><h2 id="bt-result-title">검증 결과</h2>
@@ -109,7 +129,8 @@
             <div id="bt-curves" class="studio-curves"><div><h3>누적 자산</h3><canvas id="bt-equity-plot" aria-label="시간순 누적 자산"></canvas></div>
               <div><h3>고점 대비 낙폭</h3><canvas id="bt-dd-plot" aria-label="시간순 고점 대비 낙폭"></canvas></div></div>
             <p class="cost-note" id="bt-equity-range"></p>
-            <h3>거래 내역</h3><div id="bt-trades"></div>
+            <div id="bt-orders-block" hidden><h3>매매 신호와 체결</h3><div id="bt-orders"></div></div>
+            <h3>완결 거래</h3><div id="bt-trades"></div>
             <h3>마지막 날 보유 종목</h3><div id="bt-holdings"></div>
             <details class="studio-details" open><summary>데이터 범위와 해석 조건</summary><p id="bt-coverage"></p>
               <ul id="bt-warnings"></ul><details id="bt-exclusions"><summary>제외 종목과 사유</summary><div id="bt-excluded-list"></div></details></details>
@@ -122,12 +143,31 @@
       </div>
     </div>`;
   host.append(panel,pinePane);
+  const sharedOutput=panel.querySelector(".studio-output");
+  host.append(sharedOutput);
+  // The shared scope controls specify the instrument. The old single-chart results remain reopenable.
+  pinePane.querySelector(".tv-chart-controls").hidden=true;
+  pinePane.querySelector(".tv-workbench").classList.add("bt-pine-workbench");
+  const legacyLog=node("details",null,"bt-disclosure bt-legacy-history");
+  legacyLog.innerHTML="<summary>이전 버전의 TradingView 단일 차트 기록</summary>";
+  for(const item of pinePane.querySelectorAll(".tv-job-panel,.tv-history-panel"))legacyLog.append(item);
+  pinePane.append(legacyLog);
+  pinePane.querySelector(".tv-pine-footer").hidden=true;
+  $("tv-backtest").hidden=true;
+  pinePane.querySelector(".workspace-heading h1").textContent="Pine 전략 실행";
+  pinePane.querySelector(".workspace-heading p").textContent="각 종목의 TradingView Strategy Tester 보고서를 개별 확인합니다.";
+  $("tv-pine-title").textContent="전략 코드";
+  pinePane.querySelector(".tv-pine-panel label[for='tv-code-file']").textContent="전략 파일 불러오기 ↑";
   window.HyperpassSymbols.attach("bt-symbol","bt-symbol");
   const pineActions = node("div",null,"studio-pine-save");
-  pineActions.innerHTML = `<label class="field-label" for="bt-pine-name">전략 이름</label><input id="bt-pine-name" maxlength="120" placeholder="예: 주봉 추세 돌파">
-    <button id="bt-pine-save" type="button" class="button ghost compact">이 코드를 내 전략에 추가</button>
+  pineActions.innerHTML = `<div class="bt-target-row"><div><label class="field-label" for="bt-pine-name">전략 이름</label><input id="bt-pine-name" maxlength="120" value="내 Pine 전략"></div><div id="bt-pine-period"></div></div>
+    <div class="studio-actions"><button type="button" id="bt-pine-preview" class="button ghost">실행 조건 확인</button>
+    <button type="button" id="bt-pine-run" class="button primary" disabled>Pine 백테스트 실행</button></div>
+    <p id="bt-pine-preview-summary" class="portfolio-summary" hidden></p>
     <p id="bt-pine-feedback" class="feedback" role="status"></p>`;
   $("tv-code").after(pineActions);
+  $("bt-pine-period").append(pinePane.querySelector("label[for='tv-timeframe']"),$("tv-timeframe"));
+  window.HyperpassPortfolioConditions.pineTemplate({api,message,setBusy,rules,defaults});
   const chartActions = node("div",null,"studio-chart-tools");
   chartActions.innerHTML = `<p class="cost-note" id="bt-chart-source"></p><label class="field-label" for="bt-chart-saved">내 전략으로 이 종목 검증</label>
     <select id="bt-chart-saved"><option value="">저장한 전략 선택</option></select>
@@ -147,10 +187,19 @@
     box.dataset.setting = key; box.append(title,input);
     ($(key === "initial_capital" || key === "fee_bps" || key === "slippage_bps" ? "bt-costs" : "bt-params")).append(box);
   }
-  const today = new Date(), start = new Date(today);
+  const today = new Date(); today.setDate(today.getDate()-1);
+  const start = new Date(today);
   start.setFullYear(start.getFullYear()-1);
   $("bt-start").value = localDate(start); $("bt-end").value = localDate(today);
-  $("bt-name").value = rules.trend_breakout.title;
+  $("bt-name").value = "모멘텀 순위 전략";
+  let revision = 0, previewed = null;
+  function invalidate() {
+    revision++; previewed = null;
+    $("bt-run").disabled = true; $("bt-pine-run").disabled=true;
+    $("bt-pine-preview-summary").hidden=true;
+    $("bt-preview-summary").hidden = true;
+  }
+  const conditions = window.HyperpassPortfolioConditions.mount({api, invalidate, message, labelMode:next=>modeNames[next]});
 
   function settings() {
     const values = {...retainedSettings,strategy:$("bt-rule").value,start_date:$("bt-start").value,end_date:$("bt-end").value};
@@ -174,11 +223,17 @@
     sourceLinks($("bt-rule-source"), rule);
     const visible = values.strategy === "mean_reversion" ? ["bb_period","bb_std","rsi_period","rsi_entry"] :
       values.strategy === "sma_cross" ? ["fast_period","slow_period"] : ["fast_period","slow_period","breakout_period"];
-    for (const field of $("bt-params").children) field.hidden = !visible.includes(field.dataset.setting);
+    for (const field of $("bt-params").children) {
+      field.hidden = !visible.includes(field.dataset.setting);
+      field.querySelector("input").disabled=field.hidden;
+    }
   }
   function scopeCopy() {
     const kr = $("bt-market").value === "KR";
-    $("bt-universe").textContent = mode === "market"
+    $("bt-example-load").textContent=(kr?"국내":"미국")+" PER 실습 불러오기";
+    $("bt-universe").textContent = engine==="pine" ?
+      (mode==="market"?"선택한 시장·업종의 현재 상장 종목을 TradingView에서 차례대로 검증합니다. 전체 시장 실행은 오래 걸릴 수 있고 상장폐지 종목은 누락될 수 있습니다.":
+       mode==="custom"?"입력한 각 종목에 같은 Pine 코드를 적용합니다. 결과는 종목별로 저장됩니다.":"한 종목의 차트에서 전략을 실행하고 Strategy Tester 보고서를 확인합니다.") : mode === "market"
       ? (kr ? "현재 국내 상장 종목 목록" : "현재 미국 상장 종목 목록") + "을 조회해 후보를 찾습니다. 전체 시장은 수집에 시간이 걸리며 과거 상장폐지 종목이 누락될 수 있습니다."
       : mode === "single" ? "한 종목에 가용 자본을 배분해 진입·청산 규칙을 검증합니다." : "입력한 종목끼리 매수 후보를 비교하고 동시 보유 한도를 적용합니다.";
     $("bt-symbol").placeholder = kr ? "삼성전자 또는 005930" : "애플 또는 AAPL";
@@ -186,15 +241,18 @@
     document.querySelector("label[for='bt-param-initial_capital']").textContent = "초기 자본 (" + currency($("bt-market").value) + ")";
   }
   function setMode(next) {
-    mode = next;
-    for (const button of panel.querySelectorAll("[data-bt-mode]")) button.setAttribute("aria-pressed", String(button.dataset.btMode === mode));
-    const pine = mode === "pine";
+    if (["single","market","custom"].includes(next)) mode=next;
+    invalidate(); $("bt-scope").value=mode; $("bt-engine").value=engine;
+    const pine = engine === "pine";
     $("studio-local").hidden = pine; pinePane.hidden = !pine;
     $("bt-single-field").hidden = mode !== "single"; $("bt-symbol").required = mode === "single";
     $("bt-custom-field").hidden = mode !== "custom"; $("bt-symbols").required = mode === "custom";
     $("bt-sizing").hidden = mode === "single";
     for (const input of $("bt-sizing").querySelectorAll("input,select")) input.disabled = mode === "single";
-    scopeCopy();
+    scopeCopy(); conditions.setScope(mode,$("bt-market").value,engine);
+    if ($("bt-pine-market").value!==$("bt-market").value) {
+      $("bt-pine-market").value=$("bt-market").value; $("bt-pine-market").dispatchEvent(new Event("change",{bubbles:true}));
+    }
   }
   function selectedRecord(selectId) {
     const record = records.find(item=>item.id === $(selectId).value);
@@ -205,7 +263,7 @@
     const version = ++strategyLoad, data = await api("/api/strategies");
     if (version !== strategyLoad) return;
     if (!Array.isArray(data.items)) throw new Error("저장한 전략 목록을 읽을 수 없습니다.");
-    records = data.items;
+    records = data.items; $("bt-library").hidden=!records.length;
     for (const id of ["bt-saved","bt-chart-saved"]) {
       const select=$(id), prior=selectId || select.value;
       select.replaceChildren(new Option(records.length ? "저장한 전략 선택" : "저장한 전략 없음",""),...records.map(recordOption));
@@ -215,7 +273,11 @@
   }
   function portableDefinition(body) {
     const {mode,market,symbols,settings,max_positions,ranking,lookback} = body;
-    return {mode,market,symbols:[...(symbols || [])],settings:{...settings},max_positions,ranking,lookback};
+    const definition = {mode,market,symbols:[...(symbols || [])],settings:{...settings},max_positions,ranking,lookback};
+    for (const field of ["strategy_code","universe","rebalance","monthly_contribution","dividends","fundamentals"]) {
+      if (body[field] !== undefined) definition[field] = body[field];
+    }
+    return definition;
   }
   async function save(name,kind,definition,source) {
     if (!name.trim()) throw new Error("저장할 전략 이름을 입력하세요.");
@@ -235,28 +297,38 @@
     if (!match?.yahoo) throw new Error(raw+"의 과거 시세 종목을 찾지 못했습니다.");
     return checkMarketSymbol(match.yahoo,market);
   }
+  async function scopeBody() {
+    const market=$("bt-market").value, selectedMode=mode;
+    const parts=selectedMode==="single"?[$("bt-symbol").value.trim()]:selectedMode==="custom"?$("bt-symbols").value.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean):[];
+    const unique=[...new Set(parts)];
+    if(selectedMode!=="market" && (!unique.length || !unique[0]))throw new Error("검증할 종목명이나 티커를 입력하세요.");
+    if(unique.length>300)throw new Error("직접 지정하는 종목은 최대 300개입니다.");
+    const symbols=[];
+    if (selectedMode==="single") {
+      if(/^[0-9A-Z]+[.](?:KS|KQ)$/i.test(unique[0])) symbols.push(checkMarketSymbol(unique[0].toUpperCase(),market));
+      else symbols.push(checkMarketSymbol((await window.HyperpassSymbols.field("bt-symbol","yahoo")).yahoo,market));
+    }else for(let i=0;i<unique.length;i+=4)symbols.push(...await Promise.all(unique.slice(i,i+4).map(q=>yahooSymbol(q,market))));
+    return {market,mode:selectedMode,symbols:[...new Set(symbols)],universe:conditions.readScope()};
+  }
+  const batch = window.HyperpassPineBatch.mount({api,scopeBody,startJob,save,setBusy,message,revision:()=>revision,invalidate});
   async function requestBody() {
     if (!$("bt-form").reportValidity()) throw new Error("검증 조건을 확인하세요.");
     const values = settings(), market = $("bt-market").value, selectedMode = mode;
     if (values.start_date > values.end_date) throw new Error("시작일이 종료일보다 늦습니다.");
-    if (values.fast_period >= values.slow_period) throw new Error("단기 SMA는 장기 SMA보다 작아야 합니다.");
-    const parts = selectedMode === "single" ? [$("bt-symbol").value] : selectedMode === "custom" ? $("bt-symbols").value.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean) : [];
-    const unique = [...new Set(parts)];
-    if (selectedMode !== "market" && !unique.length) throw new Error("검증할 종목을 입력하세요.");
-    if (unique.length>300) throw new Error("직접 지정할 종목은 최대 300개입니다. 전체 목록을 사용하려면 시장 전체를 선택하세요.");
-    const req = {name:$("bt-name").value.trim(),market,mode:selectedMode,settings:values,max_positions:selectedMode === "single" ? 1 : Number($("bt-positions").value),
-      ranking:$("bt-ranking").value,lookback:Number($("bt-lookback").value),symbols:[]};
-    if (selectedMode === "single") req.symbols=[checkMarketSymbol((await window.HyperpassSymbols.field("bt-symbol","yahoo")).yahoo,market)];
-    else for (let i=0;i<unique.length;i+=4) req.symbols.push(...await Promise.all(unique.slice(i,i+4).map(query=>yahooSymbol(query,market))));
-    req.symbols = [...new Set(req.symbols)];
-    return req;
+    if (!$("bt-technical-fields").hidden && values.strategy!=="mean_reversion" && values.fast_period >= values.slow_period) throw new Error("단기 SMA는 장기 SMA보다 작아야 합니다.");
+    const target=await scopeBody();
+    const req = {name:$("bt-name").value.trim(),market:target.market,mode:target.mode,symbols:target.symbols,settings:values,
+      max_positions:selectedMode === "single" ? 1 : Number($("bt-positions").value),
+      ranking:$("bt-ranking").value,lookback:Number($("bt-lookback").value)};
+    return {...req,...conditions.read()};
   }
   function fillLocal(record) {
+    $("bt-example-info").hidden=true;
     const d = record.definition, s = d.settings;
     if (!rules[s?.strategy] || !["market","single","custom"].includes(d.mode) || !["US","KR"].includes(d.market)) throw new Error("이 전략의 실행 조건을 읽을 수 없습니다.");
     if (s.slippage_mode==="ticks") throw new Error("이 전략은 틱 단위 슬리피지를 사용합니다. 차트 연구실에서 저장한 조건으로 검증하세요.");
     retainedSettings={...s};
-    setMode(d.mode); $("bt-market").value=d.market; $("bt-rule").value=s.strategy;
+    engine="portfolio"; $("bt-market").value=d.market; setMode(d.mode); $("bt-rule").value=s.strategy;
     for (const key of Object.keys(numericField)) {
       if (!Number.isFinite(s[key])) throw new Error("저장한 전략에서 " + numericField[key][0] + " 값을 찾지 못했습니다.");
       $("bt-param-"+key).value = s[key];
@@ -265,17 +337,25 @@
     $("bt-positions").value=d.max_positions; $("bt-name").value=record.name;
     $("bt-ranking").value=d.ranking || "momentum_high"; $("bt-lookback").value=d.lookback ?? 20;
     $("bt-symbol").value=d.mode==="single" ? (d.symbols?.[0] || "") : "";
+    $("bt-symbol").dispatchEvent(new Event("input",{bubbles:true}));
     $("bt-symbols").value=d.mode==="custom" ? (d.symbols||[]).join(", ") : "";
-    showRule(); scopeCopy(); message("bt-feedback",record.name+"의 저장 조건을 불러왔습니다.");
+    conditions.restore(d); showRule(); scopeCopy(); invalidate(); message("bt-feedback",record.name+"의 저장 조건을 불러왔습니다.");
   }
   function loadPine(record, target) {
     const d = record.definition;
     if (!d.code || !$("tv-timeframe").querySelector("option[value='"+CSS.escape(d.timeframe)+"']")) throw new Error("저장한 Pine 코드 또는 주기를 읽을 수 없습니다.");
-    if ($("tv-backtest").disabled) throw new Error("현재 TradingView 작업이 끝난 뒤 다시 시도하세요.");
-    window.HyperpassApp.selectWorkspace("tradingview"); setMode("pine");
+    engine="pine";
+    const detected=target ? (/^(?:KRX|KOSPI|KOSDAQ)/i.test(target)?"KR":"US") : null;
+    if(target && d.market && d.market!==detected) throw new Error("선택한 차트 종목과 저장 전략의 시장이 다릅니다.");
+    $("bt-market").value=d.market || detected || $("bt-market").value;
+    setMode(target?"single":d.mode||"single");
+    window.HyperpassApp.selectWorkspace("tradingview");
     $("tv-code").value=d.code; $("tv-timeframe").value=d.timeframe; $("bt-pine-name").value=record.name;
-    if (target || d.symbol) { $("tv-symbol").value=target || d.symbol; $("tv-symbol").dispatchEvent(new Event("input",{bubbles:true})); }
-    message("bt-pine-feedback",record.name+" 코드를 열었습니다. 종목·주기를 확인하고 '전략 적용 · 백테스트'를 누르세요.");
+    conditions.restoreScope(d.universe);
+    $("bt-symbol").value=target || d.symbol || (d.mode==="single"?d.symbols?.[0]:"") || "";
+    $("bt-symbol").dispatchEvent(new Event("input",{bubbles:true}));
+    $("bt-symbols").value=(d.symbols||[]).join(", ");
+    message("bt-pine-feedback",record.name+" 코드를 불러왔습니다. 투자 대상과 주기를 확인하세요.");
     $("tv-code").focus();
   }
   function intervalKey(value) {
@@ -354,6 +434,8 @@
       ["거래비용 2배 수익률",pct(r.cost_stress?.metrics?.total_return_pct)],["후반 별도 검증 수익률",pct(r.holdout?.metrics?.total_return_pct)],
       ["최장 낙폭 기간",money(m.longest_drawdown_sessions)+"거래일"],["평균 주식 비중",pct(m.average_exposure_pct)]
     ];
+    if (Number.isFinite(m.contributions)) metricData.push(["누적 추가 납입 ("+unit+")",money(m.contributions)]);
+    if (Number.isFinite(m.dividend_income)) metricData.push(["배당 수입 ("+unit+")",money(m.dividend_income)]);
     const metrics=$("bt-metrics"); metrics.replaceChildren();
     for (const [label,value] of metricData) {
       const el=node("div",null,"chart-metric"); el.append(node("span",label),node("strong",value)); metrics.append(el);
@@ -361,6 +443,14 @@
     const curve=r.equity_curve || [];
     $("bt-curves").hidden = !curve.length;
     $("bt-equity-range").textContent = curve.length ? curve[0].date+" ~ "+curve.at(-1).date+" · "+curve.length+"거래일 · "+unit : "";
+    $("bt-orders-block").hidden=!Array.isArray(r.orders);
+    if (Array.isArray(r.orders)) {
+      const factorNames={per:"PER",momentum:"모멘텀(%)",close:"종가",volume:"거래량"};
+      table($("bt-orders"),["종목","방향","신호일","체결일","수량","체결가 ("+unit+")","선정 지표"],
+        r.orders.map(o=>[o.symbol,o.side==="buy"?"매수":"매도",o.signal_date,o.date,money(o.quantity),money(o.price),
+          Object.entries(o.factors||{}).map(([field,value])=>(factorNames[field]||field)+" "+money(value)).join(" · ")||"—"]),
+        "선택한 조건과 기간에 체결된 주문이 없습니다.");
+    }
     table($("bt-trades"),["종목","매수일","매도일","수량","매수가","매도가","순손익 ("+unit+")","수익률"],
       (r.trades || []).map(t=>[t.name && t.name!==t.symbol ? t.name+" · "+t.symbol : t.symbol,t.entry_date,t.exit_date,money(t.quantity),money(t.entry_price),money(t.exit_price),money(t.net_pnl),pct(t.return_pct)]),"이 기간에 청산까지 마친 거래는 없습니다.");
     table($("bt-holdings"),["종목","매수일","수량","매수가","최종 평가가","평가액 ("+unit+")"],
@@ -368,6 +458,7 @@
     $("bt-coverage").textContent=[coverage?.source,coverage?.as_of && "목록 기준 "+coverage.as_of,coverage?.price_source,
       Number.isFinite(coverage?.used) && "분석 "+money(coverage.used)+" / 요청 "+money(coverage.requested)+"종목",
       Number.isFinite(coverage?.traded) && "실제 편입 "+money(coverage.traded)+"종목",
+      coverage?.factor_data && "순위 산정 가능 "+money(coverage.factor_data.scored_observations)+"건 · 지표 누락 "+money(coverage.factor_data.missing_observations)+"건",
       "편도 수수료 "+money(r.settings.fee_bps)+"bp", r.settings.slippage_mode==="ticks" ? "슬리피지 "+money(r.settings.slippage_ticks)+"틱" : "편도 슬리피지 "+money(r.settings.slippage_bps)+"bp"].filter(Boolean).join(" · ");
     const notes=[r.method,r.risk_basis,r.benchmark?.basis && "벤치마크 · "+r.benchmark.basis,
       r.holdout && "후반 검증 "+r.holdout.start+" ~ "+r.holdout.end+" · "+r.holdout.basis,...(r.warnings || [])].filter(Boolean);
@@ -388,7 +479,9 @@
     const text=[modeNames[job.request?.mode], job.request?.market, job.progress?.label, running(job) && percent!=null && (Math.round(percent)+"%"),job.error].filter(Boolean).join(" · ");
     message("bt-job-message",text || statuses[job.status],["failed","interrupted"].includes(job.status));
     $("bt-result").hidden=true; resultJob=null;
-    if(job.status==="completed" && job.result) renderResult(job);
+    batch.hide();
+    if(job.result && (job.result.engine==="pine" || job.request?.engine==="pine")) batch.display(job);
+    else if(job.status==="completed" && job.result) renderResult(job);
     if(running(job)) {
       const version=requestVersion;
       pollTimer=setTimeout(()=>pollJob(job.id,version),1600);
@@ -440,18 +533,18 @@
       const job=await api("/api/backtests",body);
       if (version!==requestVersion)return;
       displayJob(job); await refreshHistory();
-      message("bt-feedback","실행 기록에 저장했습니다.");
+      message(engine==="pine"?"bt-pine-feedback":"bt-feedback","실행 기록에 저장했습니다.");
     } finally {pendingRequest=false;}
   }
   function chartSelection() {
     const record=records.find(item=>item.id===$("bt-chart-saved").value);
-    $("bt-chart-compare").hidden=record?.kind!=="market";
-    $("bt-chart-apply").textContent = record?.kind==="pine" ? "TradingView에서 이 종목 검증 ↗" : "선택한 전략으로 검증";
+    $("bt-chart-compare").hidden=record?.kind!=="market" || !!record?.definition?.strategy_code;
+    $("bt-chart-apply").textContent = record?.kind==="pine" ? "TradingView에서 이 종목 검증 ↗" : record?.definition?.strategy_code ? "이 종목의 실행 조건 확인 ↗" : "선택한 전략으로 검증";
   }
   async function openOnChart(record, compare=false) {
     const target=$("chart-symbol").value.trim();
     if (!target) throw new Error("차트에 조회할 종목을 먼저 입력하세요.");
-    if(record.kind==="chart" || (record.kind==="market" && !compare)) {
+    if(record.kind==="chart" || (record.kind==="market" && !record.definition.strategy_code && !compare)) {
       if(record.kind==="market" && $("chart-source").value==="yahoo")
         checkMarketSymbol((await window.HyperpassSymbols.field("chart-symbol","yahoo")).yahoo,record.definition.market);
       await loadChart(record); updateChartSource();
@@ -469,7 +562,8 @@
     window.HyperpassApp.selectWorkspace("tradingview");
     fillLocal({name:record.name,definition:d});
     message("bt-feedback","이 종목의 일봉으로 저장한 규칙·기간·비용을 검증합니다.");
-    await startJob({...d,name:record.name+" · "+symbol});
+    $("bt-name").value=record.name+" · "+symbol;
+    await previewConditions(); $("bt-run").focus();
   }
   function updateChartSource() {
     const r=rules[$("chart-strategy").value];
@@ -481,34 +575,81 @@
       initialLoad=true;
       refreshStrategies().catch(error=>{initialLoad=false;message(host.hidden?"bt-chart-feedback":"bt-library-feedback",error.message,true);});
     }
-    if(!host.hidden && mode!=="pine") refreshHistory(true).catch(error=>message("bt-history-feedback",error.message,true));
+    if(!host.hidden) refreshHistory(true).catch(error=>message("bt-history-feedback",error.message,true));
   }
-  panel.querySelectorAll("[data-bt-mode]").forEach(button=>button.addEventListener("click",()=>setMode(button.dataset.btMode)));
+  $("bt-engine").addEventListener("change",()=>{engine=$("bt-engine").value;setMode(mode);});
+  $("bt-scope").addEventListener("change",()=>setMode($("bt-scope").value));
+  for(const id of ["bt-target-panel","studio-pine"]) {
+    $(id).addEventListener("input",invalidate); $(id).addEventListener("change",invalidate);
+  }
+  document.addEventListener("hyperpass:symbol-picked",event=>{if(event.target.id==="bt-symbol")invalidate();});
+  let editedDraft=false;
+  for (const event of ["input","change"]) $("bt-form").addEventListener(event,()=>{editedDraft=true;});
+  $("bt-form").addEventListener("click",event=>{
+    if(event.target.closest("#bt-builder button,#bt-scope-details button,#bt-upgrade")) editedDraft=true;
+  });
+  $("bt-example-load").addEventListener("click",()=>setBusy($("bt-example-load"),"bt-feedback",async()=>{
+    if (editedDraft && !window.confirm("현재 입력한 조건을 선택한 시장의 PER 실습으로 바꿀까요?")) return;
+    const market=$("bt-market").value, version=revision;
+    const example=await api("/api/backtests/example?market="+market);
+    if (version!==revision || market!==$("bt-market").value) throw new Error("입력이 바뀌었습니다. 실습 불러오기를 다시 눌러 주세요.");
+    fillLocal({name:example.name,definition:example});
+    const info=$("bt-example-info"); info.replaceChildren(node("p",example.description || "공시 시점을 포함한 과거 EPS를 함께 불러왔습니다."));
+    for (const source of example.sources || []) {
+      if (typeof source.url!=="string" || !source.url.startsWith("https://")) continue;
+      const link=node("a",source.name,"text-button"); link.href=source.url;link.target="_blank";link.rel="noopener noreferrer";
+      info.append(link,document.createTextNode(" "));
+    }
+    info.hidden=false; editedDraft=false;
+    message("bt-feedback","PER 실습을 불러왔습니다. 조건과 공시 자료를 살펴본 뒤 실행 조건 확인을 누르세요.");
+  }));
   $("bt-market").addEventListener("change",()=>{
+    if ($("bt-pine-market").value!==$("bt-market").value) {
+      $("bt-pine-market").value=$("bt-market").value; $("bt-pine-market").dispatchEvent(new Event("change",{bubbles:true}));
+    }
+    $("bt-example-info").hidden=true;
     const input=$("bt-param-initial_capital");
     if ([100000000,100000].includes(Number(input.value))) input.value=$("bt-market").value==="KR" ? 100000000 : 100000;
-    scopeCopy();
+    scopeCopy(); conditions.setScope(mode,$("bt-market").value,engine);
   });
   $("bt-rule").addEventListener("change",()=>{
     if(Object.values(rules).some(rule=>rule.title===$("bt-name").value) || !$("bt-name").value.trim()) $("bt-name").value=rules[$("bt-rule").value].title;
     showRule();
   });
   $("bt-params").addEventListener("input",showRule);
-  $("bt-form").addEventListener("submit",event=>{
-    event.preventDefault(); setBusy($("bt-run"),"bt-feedback",async()=>{
-      message("bt-feedback","검증 대상과 실행 조건을 확인하고 있습니다.");
-      await startJob(await requestBody());
-    });
+  async function previewConditions() {
+    invalidate();
+    const current=revision;
+    const body=await requestBody();
+    if(current!==revision) throw new Error("입력이 바뀌었습니다. 실행 조건을 다시 확인하세요.");
+    const data=await api("/api/backtests/preview",body);
+    if(current!==revision) throw new Error("입력이 바뀌었습니다. 실행 조건을 다시 확인하세요.");
+    if(!data.request?.settings) throw new Error("서버에서 실행 조건을 확인하지 못했습니다.");
+    previewed={...data.request,name:body.name};
+    const summary = $("bt-preview-summary");
+    summary.textContent=conditions.summary(previewed);
+    summary.hidden=false; $("bt-run").disabled=false;
+    message("bt-feedback","확인한 조건으로 백테스트를 시작할 수 있습니다.");
+  }
+  $("bt-preview").addEventListener("click",()=>setBusy($("bt-preview"),"bt-feedback",previewConditions));
+  $("bt-form").addEventListener("input",invalidate);
+  $("bt-form").addEventListener("change",invalidate);
+  $("bt-form").addEventListener("submit",async event=>{
+    event.preventDefault();
+    try {
+      if(!previewed) throw new Error("실행 조건 확인을 먼저 눌러 주세요.");
+      const body=previewed; invalidate(); await startJob(body);
+    } catch(error) { message("bt-feedback",error.message,true); }
   });
   $("bt-save").addEventListener("click",()=>setBusy($("bt-save"),"bt-feedback",async()=>{
-    const body=await requestBody(); await save(body.name,"market",portableDefinition(body),rules[body.settings.strategy].source);
+    const body=await requestBody(); await save(body.name,"market",portableDefinition(body),body.strategy_code ? "포트폴리오 조건 코드 v1" : rules[body.settings.strategy].source);
     message("bt-feedback","현재 검증 조건을 내 전략에 추가했습니다.");
   }));
   $("bt-save-tested").addEventListener("click",()=>setBusy($("bt-save-tested"),"bt-result-feedback",async()=>{
     const job=resultJob;
     if (!job?.request?.settings) throw new Error("저장할 완료된 실행을 선택하세요.");
     const request=job.request;
-    await save(labelOf(job),"market",portableDefinition(request),rules[request.settings.strategy].source);
+    await save(labelOf(job),"market",portableDefinition(request),request.strategy_code ? "포트폴리오 조건 코드 v1" : rules[request.settings.strategy].source);
     message("bt-result-feedback","이 실행에서 사용한 조건을 내 전략에 추가했습니다.");
   }));
   $("bt-download").addEventListener("click",()=>{
@@ -539,18 +680,14 @@
     await save($("bt-chart-name").value,"chart",{settings:s,interval:await currentInterval()},rule.source);
     message("bt-chart-feedback","이 차트의 매매 규칙과 비용·검증 조건을 저장했습니다.");
   }));
-  $("bt-pine-save").addEventListener("click",()=>setBusy($("bt-pine-save"),"bt-pine-feedback",async()=>{
-    const code=$("tv-code").value, timeframe=$("tv-timeframe").value;
-    if(!code.trim()) throw new Error("Pine 전략 코드를 입력하세요.");
-    const source=$("tv-code-file").files[0]?.name;
-    await save($("bt-pine-name").value,"pine",{code,timeframe},source ? "사용자 편집 Pine · "+source : "사용자 입력 Pine Script");
-    message("bt-pine-feedback","현재 편집기의 전체 Pine 코드와 주기를 저장했습니다.");
-  }));
   $("bt-cancel").addEventListener("click",()=>setBusy($("bt-cancel"),"bt-job-message",async()=>{
     const id=currentJob.id, version=++requestVersion; clearTimeout(pollTimer);
     try {
       const updated=await api("/api/backtests/"+encodeURIComponent(id)+"/cancel",{});
-      if(version===requestVersion)displayJob(updated);
+      if(version===requestVersion){
+        if(updated.cancelling)await pollJob(id,version);
+        else displayJob(updated);
+      }
     } catch(error){if(version===requestVersion)$("bt-retry").hidden=false;throw error;}
   }));
   $("bt-retry").addEventListener("click",()=>currentJob && pollJob(currentJob.id,++requestVersion));
@@ -575,6 +712,16 @@
     message("bt-tested-pine-feedback","이 실행에서 검증한 전체 Pine 코드와 주기를 저장했습니다.");
   }));
   document.addEventListener("hyperpass:workspace-change",onOpen);
-  document.addEventListener("hyperpass:show-pine-backtest", () => setMode("pine"));
-  showRule(); setMode("market"); updateChartSource(); onOpen();
+  document.addEventListener("hyperpass:show-pine-backtest", () => {engine="pine"; setMode("single"); legacyLog.open=true;});
+  window.HyperpassBacktest={openSymbols({market,symbols,name}) {
+    if(!["US","KR"].includes(market)||!Array.isArray(symbols)||!symbols.length||symbols.length>300)throw new Error("검증할 시장과 1~300개 종목을 선택하세요.");
+    engine="pine"; $("bt-market").value=market;setMode(symbols.length===1?"single":"custom");
+    if(mode==="single") {$("bt-symbol").value=symbols[0];$("bt-symbol").dispatchEvent(new Event("input",{bubbles:true}));}
+    else $("bt-symbols").value=symbols.join(", ");
+    conditions.restoreScope({});if(name)$("bt-pine-name").value=name;
+    $("bt-market").dispatchEvent(new Event("change",{bubbles:true}));
+    window.HyperpassApp.selectWorkspace("tradingview");
+    $("bt-target-panel").scrollIntoView({block:"start"});
+  }};
+  showRule(); setMode("single"); updateChartSource(); onOpen();
 })();

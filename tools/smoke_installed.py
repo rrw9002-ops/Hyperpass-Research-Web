@@ -176,7 +176,7 @@ def exercise(client, installation, record):
     require(providers and all(not provider.get('model') for provider in providers),
             'An unconnected AI service reported a selected model')
     require('Hyperpass' in client.request('/'), 'Main page failed to load')
-    for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css', 'strategy-lab.js', 'strategy-lab.css', 'watchlist.js', 'watchlist.css'):
+    for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css', 'strategy-lab.js', 'strategy-lab.css', 'portfolio-conditions.js', 'pine-batch.js', 'screener.js', 'screener.css', 'select-theme.js', 'watchlist.js', 'watchlist.css'):
         require(bool(client.request('/' + asset)), 'Missing UI asset: ' + asset)
     record('startup_and_assets', 'Fresh localhost app loaded all workspace assets with no configured key or selected model.')
 
@@ -212,6 +212,19 @@ def exercise(client, installation, record):
     client.request('/api/backtests', {'mode':'custom','market':'US','symbols':[]}, expected=400)
     require(client.request('/api/backtests')['items'] == [], 'Invalid backtest persisted')
     record('strategy_library', 'Saved and reopened named strategy with costs and universe, rejected an empty custom test.')
+
+    for market, currency in (('KR', 'KRW'), ('US', 'USD')):
+        sample = client.request('/api/backtests/example?market=' + market)
+        normalized = client.request('/api/backtests/preview', sample)['request']
+        require(normalized['strategy_code']['factors'][0]['field'] == 'per' and
+                len(normalized['fundamentals']) == 2 and len(normalized['symbols']) == 2,
+                'Filing-backed conditions did not survive preview')
+        pine_settings = {**sample['settings'], 'slippage_mode': 'ticks', 'slippage_ticks': 3}
+        template = client.request('/api/backtests/pine-template', {'market': market, 'settings': pine_settings})
+        require('currency = currency.' + currency in template['code'] and 'slippage = 3' in template['code'],
+                'Pine template omitted selected conditions')
+    require(not client.request('/api/backtests')['items'], 'Preview incorrectly started a backtest')
+    record('condition_preview', 'Previewed KR and US EPS exercises and generated their currency-specific Pine sources.')
 
     listed = client.request('/api/team')['documents']
     require({'team/' + item['path'] for item in listed} == TEAM_FILES, 'Expected exactly 33 fixed team documents')
@@ -301,7 +314,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.6.2-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.7.0-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

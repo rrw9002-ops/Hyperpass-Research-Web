@@ -70,11 +70,11 @@ jobs:
         run: |
           set -o pipefail
           python -m pip install playwright==1.65.2
-          python -m unittest discover -s tests -p test_chart_studio_browser.py -v 2>&1 | tee validation/browser-tests.txt
+          python -m unittest discover -s tests -p 'test_*browser.py' -v 2>&1 | tee validation/browser-tests.txt
       - name: Upload validated preview distribution
         uses: actions/upload-artifact@v4
         with:
-          name: Hyperpass-Research-Web-v0.6.2-preview-${{ matrix.artifact }}
+          name: Hyperpass-Research-Web-v0.7.0-preview-${{ matrix.artifact }}
           if-no-files-found: error
           path: |
             dist/${{ matrix.archive }}
@@ -83,6 +83,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validation-v0.6.2-preview-${{ matrix.artifact }}
+          name: validation-v0.7.0-preview-${{ matrix.artifact }}
           if-no-files-found: warn
           path: validation/

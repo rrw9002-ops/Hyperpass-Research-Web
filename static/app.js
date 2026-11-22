@@ -414,8 +414,8 @@
     }
   }
   function selectWorkspace(name) {
-    if(!['research','chart','brain','team','tradingview'].includes(name)) return;
-    for(const id of ['research','chart','brain','team','tradingview']) { const section=$('workspace-'+id); if(section)section.hidden=id!==name; }
+    if(!['research','chart','screener','brain','team','tradingview'].includes(name)) return;
+    for(const id of ['research','chart','screener','brain','team','tradingview']) { const section=$('workspace-'+id); if(section)section.hidden=id!==name; }
     for(const button of document.querySelectorAll('[data-workspace]')) {const active=button.dataset.workspace===name;button.classList.toggle('selected',active);button.setAttribute('aria-pressed',String(active));}
     if(name==='brain')window.HyperpassBrain?.refresh();
     document.dispatchEvent(new CustomEvent('hyperpass:workspace-change',{detail:{name}}));

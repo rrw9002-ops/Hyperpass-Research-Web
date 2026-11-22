@@ -282,7 +282,7 @@
     input.disabled=!length; input.value=length||""; input.placeholder=length?"":"TradingView 기본값";
     $("tv-indicator-inputs").value="";
   });
-  $("tv-code-file").addEventListener("change",async()=>{const file=$("tv-code-file").files[0];if(!file)return;if(file.size>200000){feedback("tv-input-feedback","Pine 파일은 200KB 이하로 선택하세요.",true);return;}try{$("tv-code").value=await file.text();feedback("tv-input-feedback","파일을 읽었습니다. 전략을 확인하고 실행해 주세요.");}catch{feedback("tv-input-feedback","파일을 읽지 못했습니다.",true);}});
+  $("tv-code-file").addEventListener("change",async()=>{const file=$("tv-code-file").files[0];if(!file)return;if(file.size>200000){feedback("tv-input-feedback","Pine 파일은 200KB 이하로 선택하세요.",true);return;}try{$("tv-code").value=await file.text();$("tv-code").dispatchEvent(new Event("input",{bubbles:true}));feedback("tv-input-feedback","파일을 읽었습니다. 전략을 확인하고 실행해 주세요.");}catch{feedback("tv-input-feedback","파일을 읽지 못했습니다.",true);}});
   function downloadFile(content,name,mime){const blob=new Blob([content],{type:mime}),url=URL.createObjectURL(blob),link=make("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   $("tv-launch").addEventListener("click",async()=>{if(desktopBusy||checking)return;checking=true;sync();try{feedback("tv-connect-feedback","TradingView Desktop의 연결 실행을 요청하고 있습니다.");const result=await window.HyperpassApp.api("/api/tradingview/launch",{method:"POST",body:{port:port()}});feedback("tv-connect-feedback",result.message||"Desktop 실행을 요청했습니다. 로그인한 차트를 열고 연결 확인을 눌러 주세요.");}catch(error){feedback("tv-connect-feedback",error.message,true);}finally{checking=false;sync();}});
 

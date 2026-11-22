@@ -1,0 +1,70 @@
+{
+  "KR": {
+    "name": "국내 PER 실습 · 삼성전자와 KB금융",
+    "description": "2024 회계연도 연간 EPS를 사용합니다. 두 종목 중 PER 1~15에 드는 최저 PER 종목을 고릅니다. 적용일은 예시에 인용한 공시의 공개일입니다.",
+    "start": "2025-03-20",
+    "end": "2025-04-10",
+    "symbols": [
+      "005930.KS",
+      "105560.KS"
+    ],
+    "fundamentals": [
+      {
+        "symbol": "005930.KS",
+        "available_date": "2025-03-19",
+        "eps": 4950
+      },
+      {
+        "symbol": "105560.KS",
+        "available_date": "2025-03-05",
+        "eps": 12880
+      }
+    ],
+    "sources": [
+      {
+        "name": "삼성전자 · 2024년 기본 EPS, 제56기 주주총회",
+        "url": "https://www.samsung.com/global/ir/reports-disclosures/public-disclosure-view.84325/"
+      },
+      {
+        "name": "KB금융 · 2024년 연결 기본 EPS",
+        "url": "https://www.sec.gov/Archives/edgar/data/1445930/000119312525046993/d857661dex991.htm"
+      },
+      {
+        "name": "KB금융 · SEC 공시 접수일",
+        "url": "https://www.sec.gov/Archives/edgar/data/1445930/000119312525046993/0001193125-25-046993-index.htm"
+      }
+    ]
+  },
+  "US": {
+    "name": "미국 PER 실습 · JPMorgan과 Verizon",
+    "description": "2024 회계연도 연간 EPS를 사용합니다. 두 종목 중 PER 1~15에 드는 최저 PER 종목을 고릅니다. 적용일은 예시에 인용한 공시의 공개일입니다.",
+    "start": "2025-02-03",
+    "end": "2025-03-28",
+    "symbols": [
+      "JPM",
+      "VZ"
+    ],
+    "fundamentals": [
+      {
+        "symbol": "JPM",
+        "available_date": "2025-01-15",
+        "eps": 19.75
+      },
+      {
+        "symbol": "VZ",
+        "available_date": "2025-01-24",
+        "eps": 4.14
+      }
+    ],
+    "sources": [
+      {
+        "name": "JPMorganChase · 2024년 연간 실적 발표",
+        "url": "https://www.jpmorganchase.com/content/dam/jpmc/jpmorgan-chase-and-co/investor-relations/documents/quarterly-earnings/2024/4th-quarter/36b3c0a4-3ecd-422e-8167-0a31372f3438.pdf"
+      },
+      {
+        "name": "Verizon · 2024년 연간 실적 발표",
+        "url": "https://www.verizon.com/about/news/verizon-delivered-strong-customer-growth-and-profitability-2024"
+      }
+    ]
+  }
+}

@@ -61,6 +61,11 @@ class ResearchDesk:
                 created_at TEXT NOT NULL, finished_at TEXT)""")
             db.execute("""UPDATE backtests SET status='interrupted', error=?, finished_at=?
                 WHERE status IN ('queued','running')""", ('앱 종료로 계산이 중단됐습니다. 기록의 설정으로 다시 실행하세요.', timestamp()))
+            db.execute("""CREATE TABLE IF NOT EXISTS pine_batch_reports(
+                job_id TEXT NOT NULL, idx INTEGER NOT NULL, summary TEXT NOT NULL, body TEXT,
+                PRIMARY KEY(job_id,idx))""")
+            db.execute("""CREATE TABLE IF NOT EXISTS pine_batch_backups(
+                job_id TEXT PRIMARY KEY, source TEXT NOT NULL, symbol TEXT NOT NULL, timeframe TEXT NOT NULL, target_id TEXT NOT NULL)""")
             db.execute("""CREATE TABLE IF NOT EXISTS watchlist(
                 symbol TEXT PRIMARY KEY, name TEXT NOT NULL, yahoo TEXT NOT NULL, run_id TEXT,
                 chart_id TEXT, added_at TEXT NOT NULL, quote TEXT)""")
@@ -89,6 +94,9 @@ class ResearchDesk:
                 if not isinstance(interval,str) or not re.fullmatch(r'[A-Za-z0-9]{1,24}',interval):
                     raise ValueError('차트의 봉 주기를 확인하세요.')
                 definition['interval'] = interval
+        elif kind == 'pine' and definition.get('engine') == 'pine':
+            from .pine_batch import validate
+            definition = validate(definition)
         elif kind == 'pine':
             code, timeframe = definition.get('code'), definition.get('timeframe', '')
             if not isinstance(code, str) or not code.strip() or len(code.encode()) > 200000 or not re.search(r'(?m)^\s*strategy\s*\(', code):
@@ -120,14 +128,44 @@ class ResearchDesk:
             row = db.execute('SELECT name,mode,status,request,progress,result,error,created_at,finished_at FROM backtests WHERE id=?',(identity,)).fetchone()
         if row:
             n,m,s,q,p,r,e,c,f = row
-            return dict(id=identity,name=n,mode=m,status=s,request=json.loads(q),progress=json.loads(p),
-                        result=json.loads(r) if r else None,error=e,created_at=c,finished_at=f)
+            request, result = json.loads(q), json.loads(r) if r else None
+            if request.get('engine') == 'pine':
+                with self.store.connect() as db:
+                    items = [json.loads(x[0]) for x in db.execute(
+                        'SELECT summary FROM pine_batch_reports WHERE job_id=? ORDER BY idx',(identity,))]
+                    original = db.execute('SELECT source,symbol,timeframe,target_id FROM pine_batch_backups WHERE job_id=?',(identity,)).fetchone()
+                result = result or {'engine':'pine','basis':'independent_per_symbol','requested':0}
+                result['rows'] = items
+                if original:
+                    result['previous_source'] = original[0]
+                    result['original_chart'] = dict(symbol=original[1],timeframe=original[2],target_id=original[3])
+                if s == 'interrupted':
+                    result['completed'] = sum(x['status']=='completed' for x in items)
+                    result['failed'] = sum(x['status']=='failed' for x in items)
+                    result['not_attempted'] = max(0,result['requested']-len(items))
+                    result['skipped'] = result['not_attempted'] + sum(x['status']=='skipped' for x in items)
+                    result['restore'] = {'status':'unconfirmed','message':'앱이 종료됐습니다. 원래 차트와 편집기 백업을 확인하세요.'}
+            return dict(id=identity,name=n,mode=m,status=s,request=request,progress=json.loads(p),
+                        result=result,error=e,created_at=c,finished_at=f)
+
+    def pine_report(self, identity, index):
+        with self.store.connect() as db:
+            row = db.execute('SELECT body FROM pine_batch_reports WHERE job_id=? AND idx=?',(identity,index)).fetchone()
+        return json.loads(row[0]) if row and row[0] else None
 
     def start(self, payload):
         from .market_backtest import validate_request
         from .chart_lab import STRATEGIES
-        request = validate_request({k:v for k,v in payload.items() if k != 'name'})
-        name = title(payload.get('name') or STRATEGIES[request['settings']['strategy']])
+        if payload.get('engine') == 'pine':
+            from .pine_batch import validate
+            request = validate(payload)
+            default_name = 'TradingView Pine 전략'
+        else:
+            if payload.get('engine') not in (None,'portfolio'):
+                raise ValueError('지원하는 전략 엔진을 선택하세요.')
+            request = validate_request({k:v for k,v in payload.items() if k != 'name'})
+            default_name = STRATEGIES[request['settings']['strategy']]
+        name = title(payload.get('name') or default_name)
         identity, stop = uuid.uuid4().hex, threading.Event()
         with self.job_lock:
             if self.active:
@@ -140,7 +178,38 @@ class ResearchDesk:
             thread.start()
         return self.job(identity)
 
+    def _work_pine(self, identity, request, stop):
+        from .pine_batch import run
+        def checkpoint(percent, label, result):
+            with self.store.connect() as db:
+                db.execute("UPDATE backtests SET status='running',progress=?,result=? WHERE id=?",
+                           (pack(dict(percent=percent,label=label)),pack(result),identity))
+        def record(index, summary, raw):
+            with self.store.connect() as db:
+                db.execute('INSERT INTO pine_batch_reports VALUES (?,?,?,?)',
+                           (identity,index,pack(summary),pack(raw) if raw else None))
+        def backup(source, symbol, timeframe, target):
+            with self.store.connect() as db:
+                db.execute('INSERT INTO pine_batch_backups VALUES (?,?,?,?,?)',(identity,source,symbol,timeframe,target))
+        try:
+            status, result, error = run(request,stop,checkpoint,record,backup)
+            with self.store.connect() as db:
+                label = {'completed':'모든 종목 검증 완료','partial':'일부 종목 검증 완료','cancelled':'중단됨','failed':'검증 실패'}[status]
+                percent = 100 if status == 'completed' else int(100*(result['requested']-result['not_attempted'])/max(1,result['requested']))
+                db.execute('UPDATE backtests SET status=?,result=?,error=?,progress=?,finished_at=? WHERE id=?',
+                           (status,pack(result),error,pack(dict(percent=percent,label=label)),timestamp(),identity))
+        except Exception:
+            with self.store.connect() as db:
+                db.execute("UPDATE backtests SET status='interrupted',error=?,finished_at=? WHERE id=?",
+                           ('연결 또는 기록 처리 중 실행이 중단됐습니다. 저장한 종목별 결과와 Desktop을 확인하세요.',timestamp(),identity))
+        finally:
+            with self.job_lock:
+                self.active = None
+
     def _work(self, identity, request, stop):
+        if request.get('engine') == 'pine':
+            self._work_pine(identity,request,stop)
+            return
         from .market_backtest import run_backtest, BacktestCancelled
         last = 0.0
 

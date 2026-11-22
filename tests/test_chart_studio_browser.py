@@ -94,7 +94,10 @@ class ChartStudioBrowserTest(unittest.TestCase):
             # The selected Desktop window and its own interval also survive the status preflight.
             desktop.tabs["desk-b"] = {"symbol": "NASDAQ:MSFT", "timeframe": "60"}
             chart.locator("#chart-source").select_option("tradingview")
+            original_query = chart.locator("#chart-symbol").input_value()
             chart.locator("#chart-target").select_option("desk-b")
+            expect(chart.locator("#chart-symbol")).to_have_value(original_query)
+            chart.locator("#chart-use-desktop").click()
             expect(chart.locator("#chart-symbol")).to_have_value("NASDAQ:MSFT")
             chart.locator("details.tv-builtins > summary").click()
             chart.locator("#tv-queue-indicator").click()
@@ -117,24 +120,26 @@ class ChartStudioBrowserTest(unittest.TestCase):
                              ("desk-b", "NASDAQ:MSFT", "15"))
 
             workspace("tradingview")
-            for mode in ("market", "single", "custom", "pine"):
-                pine.locator(f'[data-bt-mode="{mode}"]').click()
-                self.assertFalse(apply.is_visible(), mode)
+            for engine in ("portfolio", "pine"):
+                pine.locator("#bt-engine").select_option(engine)
+                for mode in ("market", "single", "custom"):
+                    pine.locator("#bt-scope").select_option(mode)
+                    self.assertFalse(apply.is_visible(), (engine, mode))
             self.assertEqual(pine.locator("#tv-configure").count(), 0)
-            expect(pine.locator("#tv-history")).not_to_contain_text("개인 지표")
+
+            # Seed the previous single-chart job format and reopen it through its history.
             strategy_code = '//@version=6\nstrategy("QA strategy")\nstrategy.entry("long", strategy.long)'
-            pine.locator("#tv-check").click()
-            pine.locator("#tv-target").select_option("desk-a")
-            pine.locator("#tv-symbol").fill("NASDAQ:AAPL")
-            pine.locator("#tv-timeframe").select_option("1D")
-            pine.locator("#tv-code").fill(strategy_code)
-            pine.locator("#tv-backtest").click()
-            expect(pine.locator("#tv-job-badge")).to_have_text("백테스트 완료", timeout=12000)
+            request = {"action": "backtest", "target_id": "desk-a", "symbol": "NASDAQ:AAPL",
+                       "port": 9222, "timeframe": "1D", "indicators": [], "code": strategy_code}
+            previous = desktop.run_strategy(port=9222, target_id="desk-a", code=strategy_code, timeout=75,
+                                            on_progress=None, expected_chart={"symbol": "NASDAQ:AAPL", "timeframe": "1D"})
+            strategy = {"id": "b" * 32, "status": "completed", "created_at": "2025-11-30T00:00:00+00:00",
+                        "request": request, "result": previous, "stage": "finished"}
+            app.tv_jobs.put(strategy)
+            pine.locator(".bt-legacy-history > summary").click()
+            pine.locator("#tv-history-refresh").click()
+            pine.locator("#tv-history button").filter(has_text="전략 백테스트").click()
             expect(pine.locator("#tv-metrics")).to_contain_text("123.45")
-            strategy = app.tv_jobs.list()[0]
-            self.assertEqual(strategy["request"]["action"], "backtest")
-            self.assertEqual(strategy["request"]["code"], strategy_code)
-            expect(pine.locator("#tv-history")).to_contain_text("전략 백테스트")
             expect(pine.locator("#tv-history")).not_to_contain_text("개인 지표")
             workspace("chart")
             expect(chart.locator("#chart-tv-history")).not_to_contain_text("전략 백테스트")
@@ -167,7 +172,7 @@ class ChartStudioBrowserTest(unittest.TestCase):
                 "desktop_source_target": [config["target_id"], config["symbol"], config["timeframe"]],
                 "explicit_study_period": override["timeframe"],
                 "strategy_symbol": strategy["request"]["symbol"], "strategy_report_fixture_net_profit": 123.45,
-                "isolated_backtest_modes": ["market", "single", "custom", "pine"],
+                "isolated_backtest_modes": ["market", "single", "custom"], "engines": ["pine", "portfolio"],
                 "chart_history_reopened": True, "second_brain_strategy_reopened": True,
                 "page_errors": errors, "duplicate_ids": duplicates, "widths_px": [375, 1440],
                 "live_desktop_modified": False,

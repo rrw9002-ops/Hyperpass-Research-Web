@@ -1,0 +1,11 @@
+
+.sc-layout{display:grid;grid-template-columns:minmax(235px,280px) minmax(0,1fr);gap:18px;align-items:start}
+.sc-controls,.sc-output>.panel{padding:clamp(16px,2vw,27px)}
+.sc-controls,.sc-output{display:grid;gap:18px;min-width:0}.sc-controls label{display:grid;gap:6px}
+.sc-controls fieldset{min-width:0;border:0;border-top:1px solid var(--line,#3d372d);margin:0;padding:10px 0 0}
+.sc-controls legend{padding:0 8px 0 0;font-weight:700}.sc-checks,.sc-actions,.sc-presets,.sc-pages{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.sc-presets button{flex:1 1 40%;white-space:nowrap}.sc-checks label,.sc-output td label{display:inline-flex;align-items:center;gap:4px;font-size:.83rem}
+.sc-checks input,.sc-output td input{width:auto;min-height:0;accent-color:#ff811f}.sc-range{display:grid;grid-template-columns:1fr 1fr auto;gap:4px;margin:6px 0}.sc-range select{grid-column:1/-1}.sc-range input{min-width:0}
+.sc-output .sc-actions{margin:12px 0}.sc-actions details{padding:6px 9px;border:1px solid var(--line,#40382b);border-radius:8px}.sc-actions summary{cursor:pointer}.sc-scroll{max-width:100%;overflow:auto}.sc-scroll table{width:100%;border-collapse:collapse;font-size:.83rem;font-variant-numeric:tabular-nums}.sc-scroll th,.sc-scroll td{white-space:nowrap;padding:9px 7px;text-align:right;border-bottom:1px solid var(--line,#383225)}.sc-scroll th{font-weight:600;color:var(--muted,#c8bfae)}.sc-scroll th>button{border:0;padding:3px 1px;background:transparent;color:inherit}.sc-scroll td:nth-child(2),.sc-scroll th:nth-child(2){text-align:left}.sc-scroll td small{display:block;color:var(--muted,#b8ae9d);margin-top:3px}.sc-scroll td strong{white-space:normal;display:block;min-width:7rem;max-width:16rem}.sc-scroll td button{margin:2px}.sc-pages{justify-content:center;margin:16px 0 0}#sc-count{font-size:.8em;color:#f6ab65}#sc-status:empty{display:none}
+@media(max-width:900px){.sc-layout{grid-template-columns:1fr}.sc-controls{grid-template-columns:repeat(2,minmax(0,1fr))}.sc-controls h2,.sc-controls>.sc-actions{grid-column:1/-1}}
+@media(max-width:540px){.sc-controls{grid-template-columns:minmax(0,1fr)}.sc-output>.panel{padding:12px}}
