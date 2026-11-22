@@ -182,27 +182,27 @@
       ctx.translate(cx, cy);
       ctx.scale(radius, radius);
       const surface = ctx.createRadialGradient(-.35, -.55, .04, 0, 0, 1);
-      surface.addColorStop(0, "rgba(168, 204, 223, .24)");
-      surface.addColorStop(.28, "rgba(101, 148, 175, .14)");
-      surface.addColorStop(.61, "rgba(43, 69, 91, .16)");
-      surface.addColorStop(.88, "rgba(21, 36, 54, .43)");
-      surface.addColorStop(1, "rgba(125, 165, 184, .18)");
+      surface.addColorStop(0, "rgba(227, 211, 175, .16)");
+      surface.addColorStop(.28, "rgba(158, 139, 98, .075)");
+      surface.addColorStop(.61, "rgba(65, 57, 40, .13)");
+      surface.addColorStop(.88, "rgba(26, 23, 17, .35)");
+      surface.addColorStop(1, "rgba(167, 145, 103, .13)");
       ctx.beginPath();
       ctx.arc(0, 0, 1, 0, Math.PI * 2);
       ctx.fillStyle = surface;
       ctx.fill();
       const edge = ctx.createLinearGradient(-.7, -.75, .7, .75);
-      edge.addColorStop(0, "rgba(210, 235, 246, .58)");
-      edge.addColorStop(.35, "rgba(132, 180, 200, .08)");
-      edge.addColorStop(.68, "rgba(168, 182, 195, .12)");
-      edge.addColorStop(1, "rgba(253, 189, 134, .44)");
+      edge.addColorStop(0, "rgba(235, 221, 187, .46)");
+      edge.addColorStop(.35, "rgba(171, 155, 118, .07)");
+      edge.addColorStop(.68, "rgba(188, 166, 131, .10)");
+      edge.addColorStop(1, "rgba(240, 167, 93, .37)");
       ctx.strokeStyle = edge;
       ctx.lineWidth = 1 / radius;
       ctx.stroke();
       const reflection = ctx.createLinearGradient(-1, -.8, .26, -.8);
-      reflection.addColorStop(0, "rgba(205, 231, 245, 0)");
-      reflection.addColorStop(.32, "rgba(205, 231, 245, .22)");
-      reflection.addColorStop(1, "rgba(205, 231, 245, 0)");
+      reflection.addColorStop(0, "rgba(239, 222, 184, 0)");
+      reflection.addColorStop(.32, "rgba(239, 222, 184, .22)");
+      reflection.addColorStop(1, "rgba(239, 222, 184, 0)");
       ctx.beginPath();
       ctx.arc(0, 0, .963, Math.PI * 1.07, Math.PI * 1.58);
       ctx.strokeStyle = reflection;
@@ -215,17 +215,17 @@
       this.clampOffset();
       ctx.clearRect(0,0,w,h);const cx=w/2+this.offsetX,cy=h*.5+this.offsetY,radius=Math.min(w*.36,h*.32)*this.zoom;
       this.drawLens(cx, cy, radius);
-      ctx.save();ctx.translate(cx,cy);ctx.rotate(-.35);ctx.strokeStyle="rgba(176,209,228,.19)";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(0,0,radius*1.22,radius*.75,0,0,Math.PI*2);ctx.stroke();ctx.strokeStyle="rgba(233,187,151,.13)";ctx.beginPath();ctx.ellipse(0,0,radius*1.32,radius*1.12,.85,0,Math.PI*2);ctx.stroke();ctx.restore();
+      ctx.save();ctx.translate(cx,cy);ctx.rotate(-.35);ctx.strokeStyle="rgba(195,168,110,.13)";ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(0,0,radius*1.22,radius*.75,0,0,Math.PI*2);ctx.stroke();ctx.strokeStyle="rgba(240,167,93,.09)";ctx.beginPath();ctx.ellipse(0,0,radius*1.32,radius*1.12,.85,0,Math.PI*2);ctx.stroke();ctx.restore();
       const points=this.points.map(point=>this.project(point,radius,cx,cy)).sort((a,b)=>a.z-b.z);
       for (const p of points) {
         const front = (p.z + 1) / 2;
-        const color = front > .7 ? "216,232,240" : "144,176,192";
+        const color = front > .7 ? "232,222,183" : "174,161,124";
         ctx.fillStyle = `rgba(${color},${.08 + front * .54})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, .55 + front * .72, 0, Math.PI * 2);
         ctx.fill();
       }
-      for(let i=0;i<170;i++){const a=i*2.399963+this.angle*1.4,rr=radius*.32*Math.sqrt((i+.5)/170),x=cx+Math.cos(a)*rr,y=cy+Math.sin(a)*rr*.82;ctx.fillStyle=i%7===0?"rgba(255,164,100,.88)":"rgba(238,211,181,.65)";ctx.beginPath();ctx.arc(x,y,i%11===0?1.5:.8,0,Math.PI*2);ctx.fill();}
+      for(let i=0;i<170;i++){const a=i*2.399963+this.angle*1.4,rr=radius*.32*Math.sqrt((i+.5)/170),x=cx+Math.cos(a)*rr,y=cy+Math.sin(a)*rr*.82;ctx.fillStyle=i%7===0?"rgba(255,128,49,.82)":"rgba(225,214,133,.65)";ctx.beginPath();ctx.arc(x,y,i%11===0?1.5:.8,0,Math.PI*2);ctx.fill();}
       this.hits=[];
       this.items.forEach((item,i)=>{const theta=i*2.399963+this.angle*.15,yy=1-2*(i+.5)/Math.max(this.items.length,1),rr=Math.sqrt(Math.max(0,1-yy*yy)),p=this.project({x:Math.cos(theta)*rr,y:yy*.85,z:Math.sin(theta)*rr},radius*1.05,cx,cy);const active=this.hover?.item.id===item.id&&this.hover?.item.type===item.type;ctx.strokeStyle="rgba(241,164,90,.16)";ctx.lineWidth=.65;ctx.beginPath();ctx.moveTo(cx,cy);ctx.lineTo(p.x,p.y);ctx.stroke();const color=item.type==="incomplete"?"#bca987":item.type==="sample"?"#a39a77":item.type==="chart"?"#d2d6a2":"#ff8c47";ctx.shadowColor=color;ctx.shadowBlur=active?20:10;ctx.fillStyle=color;ctx.beginPath();ctx.arc(p.x,p.y,active?4.8:3,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=active?"rgba(255,206,142,.65)":"rgba(231,194,133,.25)";ctx.beginPath();ctx.arc(p.x,p.y,active?8:6,0,Math.PI*2);ctx.stroke();this.hits.push({...p,item});});
       if(this.hover){const hit=this.hits.find(p=>p.item.id===this.hover.item.id&&p.item.type===this.hover.item.type);if(hit){const label=(hit.item.title||types[hit.item.type]).slice(0,24);ctx.font="500 12px "+getComputedStyle(this.canvas).fontFamily;const labelWidth=Math.min(w-24,ctx.measureText(label).width+20),left=Math.max(8,Math.min(w-labelWidth-8,hit.x-labelWidth/2)),top=Math.max(8,hit.y-35);ctx.fillStyle="rgba(22,18,10,.94)";ctx.fillRect(left,top,labelWidth,24);ctx.strokeStyle="rgba(183,122,64,.7)";ctx.strokeRect(left,top,labelWidth,24);ctx.fillStyle="#e8e2d2";ctx.fillText(label,left+10,top+16);}}
