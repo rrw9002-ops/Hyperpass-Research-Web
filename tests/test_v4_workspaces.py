@@ -38,7 +38,7 @@ def strategy_fixture():
 class V4WorkspaceHTTPTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory()
-        self.root=Path(self.folder.name)
+        self.root=Path(self.folder.name).resolve()
         self.app=Application(self.root/'runtime',team_dir=self.root/'team')
         self.server=serve(self.app,0)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True)

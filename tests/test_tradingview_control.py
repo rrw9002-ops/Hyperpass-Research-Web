@@ -196,7 +196,7 @@ global.window={TradingViewApi:{_activeChartWidgetWV:{value:()=>({_chartWidget:{m
  console.log('verified');
 })().catch(e=>{console.error(e);process.exit(1)});
 '''.replace("PROGRAM", "(" + tv._PROGRAM + ")")
-        result = subprocess.run(["node"], input=harness, text=True, capture_output=True, timeout=10)
+        result = subprocess.run(["node"], input=harness, text=True, encoding="utf-8", capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("verified", result.stdout)
 
@@ -227,7 +227,7 @@ async function run(changed) {
 }
 (async()=>{await run(false);await run(true);console.log('verified')})().catch(e=>{console.error(e);process.exit(1)});
 '''.replace("PROGRAM", "(" + tv._PROGRAM + ")")
-        result = subprocess.run(["node"], input=harness, text=True, capture_output=True, timeout=10)
+        result = subprocess.run(["node"], input=harness, text=True, encoding="utf-8", capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("verified", result.stdout)
 
