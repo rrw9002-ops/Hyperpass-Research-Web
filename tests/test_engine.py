@@ -77,6 +77,38 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["usage"]["calls"], 1)
 
+    def test_first_task_keeps_source_attachment_with_empty_artifact_input_ids(self):
+        evidence = json.dumps({"provider": "tradingview_strategy_tester", "report_id": "9" * 32,
+                               "symbol": "TEST", "metrics": {"total_trades": 2}})
+        provider = Scripted()
+        result = Engine(provider, lambda event: None, lambda: False, ROOT).run(
+            "제공한 차트 보고서의 한계를 검토하세요.", evidence=evidence,
+            target_role="technical-analyst", web_search=False)
+        self.assertEqual(result["status"], "completed")
+        head = provider.seen[0]
+        self.assertIn('every delegated task MUST have `"input_ids": []`', head["instructions"])
+        self.assertIn("At initial stage=plan, every task MUST use input_ids: []", head["instructions"])
+        producer = next(call for call in provider.seen if call["payload"].get("role") == "technical-analyst")
+        self.assertEqual(producer["payload"]["provided_evidence"], evidence)
+        self.assertEqual(result["artifacts"][0]["input_ids"], [])
+        reviewer = next(call for call in provider.seen if call["payload"].get("role") == "judgment-reviewer")
+        self.assertEqual(reviewer["payload"]["provided_evidence"], "")
+        self.assertEqual([item["id"] for item in reviewer["payload"]["accepted_inputs"]], ["technical-analyst-v1"])
+        self.assertTrue(result["reviews"]["judgment-reviewer"])
+
+    def test_source_report_id_in_evidence_never_becomes_an_accepted_artifact_id(self):
+        source_id = "9" * 32
+        def edit(payload, data):
+            if payload["stage"] == "plan":
+                data["tasks"][0]["input_ids"] = [source_id]
+        provider = Scripted(edit)
+        result = Engine(provider, lambda event: None, lambda: False, ROOT).run(
+            "첨부 보고서를 검토하세요.", evidence=json.dumps({"report_id": source_id}))
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["usage"]["calls"], 1)
+        self.assertEqual(result["artifacts"], [])
+        self.assertFalse(result["report_complete"])
+
     def test_revision_reuses_owner_and_invalidates_old_review(self):
         def edit(payload, data):
             if payload["stage"] == "reassess" and payload["pending"][0]["id"] == "judgment-reviewer-v1":

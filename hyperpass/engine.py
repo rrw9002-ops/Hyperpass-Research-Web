@@ -94,6 +94,13 @@ concerns allocation, exposure constraints, downside decisions or a material risk
 do not invent an investor profile to justify adding those roles.
 Return tasks with exact accepted input_ids, a bounded question, and only known roles. Do not
 assign multiple simultaneous tasks to one role. No new reviewer before evidence is accepted.
+At initial stage=plan, every task MUST use input_ids: []. No specialist artifacts have
+been accepted yet. Source/attachment/TradingView report/chart/strategy/job IDs, URLs and
+filenames are never accepted artifact IDs. Mention such identifiers in the task question
+if needed. Producers automatically receive attachments as provided_evidence even with
+empty input_ids. Later input_ids may contain only current specialist artifact IDs accepted
+through the runtime acceptance gate, such as technical-analyst-v1. Reviewers still receive
+only accepted specialist artifacts, never unreviewed original attachments.
 Review tasks run alone after producers are accepted, never in a simultaneous batch with producers.
 For simple trusted fact/status questions you may answer directly with no team and no investment
 decision. Otherwise direct_answer must be empty and tasks nonempty. Source retrieval failure
