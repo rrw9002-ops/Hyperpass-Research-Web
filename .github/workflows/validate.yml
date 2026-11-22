@@ -1,0 +1,79 @@
+name: Validate installed apps
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installed-app:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            runner: windows-2022
+            artifact: Windows-x64
+            executable: Hyperpass-Research-Web.exe
+            package_args: --windows
+            archive: Hyperpass-Research-Web-Windows.zip
+          - name: macOS Apple Silicon
+            runner: macos-15
+            artifact: macOS-arm64
+            executable: Hyperpass-Research-Web
+            package_args: --mac --architecture arm64
+            archive: Hyperpass-Research-Web-macOS-arm64.zip
+          - name: macOS Intel
+            runner: macos-15-intel
+            artifact: macOS-x86_64
+            executable: Hyperpass-Research-Web
+            package_args: --mac --architecture x86_64
+            archive: Hyperpass-Research-Web-macOS-x86_64.zip
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run regression tests
+        run: |
+          set -o pipefail
+          mkdir -p validation
+          python -m unittest discover -s tests -v 2>&1 | tee validation/unit-tests.txt
+      - name: Test isolated source installation over HTTP
+        run: python tools/smoke_installed.py --source . --output validation/source-smoke.json
+      - name: Install pinned build dependency
+        run: python -m pip install pyinstaller==6.22.3
+      - name: Build native executable
+        run: python -m PyInstaller --clean --noconfirm Hyperpass-Research-Web.spec
+      - name: Test standalone executable and bundled team seeding
+        run: python tools/smoke_installed.py --executable "dist/${{ matrix.executable }}" --output validation/frozen-smoke.json
+      - name: Package distribution
+        run: python tools/build_release.py ${{ matrix.package_args }}
+      - name: Test the extracted executable ZIP
+        run: python tools/smoke_installed.py --archive "dist/${{ matrix.archive }}" --output validation/archive-smoke.json
+      - name: Upload validated preview distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hyperpass-Research-Web-v0.4.0-preview-${{ matrix.artifact }}
+          if-no-files-found: error
+          path: |
+            dist/${{ matrix.archive }}
+            dist/${{ matrix.archive }}.sha256
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validation-v0.4.0-preview-${{ matrix.artifact }}
+          if-no-files-found: warn
+          path: validation/
