@@ -176,7 +176,7 @@ def exercise(client, installation, record):
     require(providers and all(not provider.get('model') for provider in providers),
             'An unconnected AI service reported a selected model')
     require('Hyperpass' in client.request('/'), 'Main page failed to load')
-    for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css'):
+    for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css', 'strategy-lab.js', 'strategy-lab.css', 'watchlist.js', 'watchlist.css'):
         require(bool(client.request('/' + asset)), 'Missing UI asset: ' + asset)
     record('startup_and_assets', 'Fresh localhost app loaded all workspace assets with no configured key or selected model.')
 
@@ -193,6 +193,25 @@ def exercise(client, installation, record):
     client.request('/api/indicators', edited_indicator)
     require(client.request('/api/indicators')['indicators'] == [edited_indicator], 'Personal indicator edit was not saved')
     record('personal_indicators', 'Created, edited and reopened a personal Pine indicator over the installed app API.')
+
+    apple = client.request('/api/symbols/resolve?' + urlencode({'q':'애플','target':'yahoo'}))
+    require(apple['yahoo'] == 'AAPL', 'Korean stock name failed to resolve')
+    client.request('/api/watchlist', {'symbol':'애플'})
+    client.request('/api/watchlist', {'symbol':'AAPL'})
+    tracked = client.request('/api/watchlist')['items']
+    require(len(tracked) == 1 and tracked[0]['yahoo'] == 'AAPL', 'Watchlist failed to deduplicate name and ticker')
+    client.request('/api/watchlist/remove', {'symbol':tracked[0]['symbol']})
+    record('watchlist', 'Korean name and ticker resolved to one persistent watchlist entry, then removed.')
+
+    spec = {'kind':'market','name':'시장 전략 예제','source':'설치 검사','definition': {
+        'mode':'custom','market':'US','symbols':['AAPL','MSFT'],'max_positions':2,'settings':{
+        'strategy':'sma_cross','start_date':'2024-01-01','end_date':'2024-12-31','slippage_bps':7}}}
+    saved = client.request('/api/strategies', spec, expected=201)
+    reopened = client.request('/api/strategies')['items'][0]
+    require(reopened == saved and reopened['definition']['settings']['slippage_bps'] == 7, 'Saved strategy did not reopen')
+    client.request('/api/backtests', {'mode':'custom','market':'US','symbols':[]}, expected=400)
+    require(client.request('/api/backtests')['items'] == [], 'Invalid backtest persisted')
+    record('strategy_library', 'Saved and reopened named strategy with costs and universe, rejected an empty custom test.')
 
     listed = client.request('/api/team')['documents']
     require({'team/' + item['path'] for item in listed} == TEAM_FILES, 'Expected exactly 33 fixed team documents')
@@ -271,7 +290,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.5.3-preview.2', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.6.0-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

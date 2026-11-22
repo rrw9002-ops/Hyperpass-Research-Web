@@ -234,9 +234,17 @@ def _evaluate(url, port, count):
         ws.close()
 
 
+def same_chart_symbol(observed, requested):
+    """KRX labels its delayed feed separately; other venues must match exactly."""
+    observed = str(observed).upper()
+    return observed == requested or (
+        requested.startswith("KRX:") and observed == "KRX_DLY:" + requested.split(":", 1)[1]
+    )
+
+
 def _normalize(raw, symbol, count):
     observed = str(raw.get("symbol", "")).upper()
-    if observed != symbol:
+    if not same_chart_symbol(observed, symbol):
         raise TradingViewChartError("현재 TradingView 차트의 종목이 요청한 심볼과 다릅니다. 앱에서 해당 차트를 직접 여세요.")
     bars = raw.get("bars")
     if not isinstance(bars, list) or not bars or len(bars) > count:
@@ -278,7 +286,7 @@ def _normalize(raw, symbol, count):
             "values": [{"label": str(v.get("label", ""))[:200], "display_value": str(v.get("display_value", ""))[:300]}
                        for v in values[:80] if isinstance(v, dict)] if isinstance(values, list) else [],
             "value_time": "data_window_selection_unknown"})
-    return {"provider": "tradingview", "mode": "desktop-chart-cdp", "symbol": symbol,
+    return {"provider": "tradingview", "mode": "desktop-chart-cdp", "symbol": symbol, "observed_symbol": observed,
             "records": records, "studies": normalized, "listed_studies": raw.get("listed_studies", [])[:80],
             "timeframe": str(raw.get("timeframe", "unknown"))[:40], "currency": str(raw.get("currency", "unknown"))[:30],
             "chart_timezone": str(raw.get("timezone", "unknown"))[:80], "as_of": as_of,
@@ -288,16 +296,20 @@ def _normalize(raw, symbol, count):
                       "지표 값은 데이터 창 표시값입니다. 커서 선택 시각을 확인할 수 없어 마지막 봉과 같은 시점으로 간주하지 않습니다."]}
 
 
-def fetch_chart(port: int, symbol: str, count=100):
+def fetch_chart(port: int, symbol: str, count=100, target_id=None):
     """Read already-open chart. User must explicitly enable local CDP first."""
     port = _port(port)
     symbol = _symbol(symbol)
+    if target_id is not None and (not isinstance(target_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", target_id)):
+        raise TradingViewChartError("Desktop 차트 탭을 다시 선택하세요.")
     if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 500:
         raise TradingViewChartError("차트 봉 개수는 1–500 정수여야 합니다.")
     try:
         candidates = []
         for target in _targets(port):
             if not isinstance(target, dict) or target.get("type") != "page":
+                continue
+            if target_id is not None and target.get("id") != target_id:
                 continue
             parsed = urlsplit(target.get("url", ""))
             if (parsed.scheme in ("https", "http") and parsed.hostname
@@ -311,13 +323,13 @@ def fetch_chart(port: int, symbol: str, count=100):
         for target in candidates[:8]:
             try:
                 raw = _evaluate(target.get("webSocketDebuggerUrl", ""), port, count)
-                if str(raw.get("symbol", "")).upper() == symbol:
+                if same_chart_symbol(raw.get("symbol"), symbol):
                     return _normalize(raw, symbol, count)
             except TradingViewChartError as exc:
                 last_error = exc
         if last_error:
             raise last_error
-        raise TradingViewChartError("열린 TradingView 차트에 요청한 심볼이 없습니다. 거래소:종목을 정확히 맞추세요.")
+        raise TradingViewChartError("열린 TradingView 차트에 요청한 심볼이 없습니다. 같은 종목도 거래소가 다를 수 있습니다. ‘열린 종목 가져오기’를 누르거나 Desktop에서 요청한 종목을 먼저 여세요.")
     except TradingViewChartError:
         raise
     except (OSError, ValueError, KeyError, TypeError, AttributeError, http.client.HTTPException):

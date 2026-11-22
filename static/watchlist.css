@@ -1,0 +1,13 @@
+.watch-panel{margin:0 0 1rem;padding:clamp(.95rem,2vw,1.5rem)}
+.watch-panel .panel-heading{align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:.7rem}
+#watch-count{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.watch-controls,.watch-actions,.watch-matches{display:flex;gap:.55rem;align-items:center;flex-wrap:wrap}
+.watch-actions{margin:.5rem 0}.watch-actions[hidden]{display:none}
+.watch-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,19rem),1fr));gap:.7rem}
+.watch-card{border:1px solid var(--line);border-radius:.75rem;padding:.85rem;background:var(--panel)}
+.watch-card h3{font-size:1rem;margin:0 0 .25rem}.watch-card p{font-variant-numeric:tabular-nums;margin:.5rem 0}
+.watch-card small,.watch-panel .feedback{color:var(--muted)}
+.watch-card .watch-controls{margin-top:.55rem;gap:.8rem}
+.watch-form{display:grid;gap:.7rem;padding:clamp(1rem,3vw,1.7rem)}.watch-form h2{margin:0}
+#watch-dialog{width:min(28rem,calc(100% - 2rem))}#watch-dialog .watch-controls{justify-content:flex-end}
+.watch-panel:focus-within,.watch-actions:focus-within{scroll-margin-top:5rem}

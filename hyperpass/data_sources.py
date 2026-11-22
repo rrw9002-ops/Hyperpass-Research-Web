@@ -302,9 +302,16 @@ class DataSources:
     @staticmethod
     def _csv_rows(text, max_rows=1000):
         try:
-            reader = csv.DictReader(io.StringIO(text.lstrip("\ufeff")))
-            names = reader.fieldnames or []
-            lookup = {name.strip().lower(): name for name in names}
+            content = text.lstrip("\ufeff").strip()
+            first_line = content.partition("\n")[0]
+            delimiter = max((",", ";", "\t"), key=first_line.count)
+            reader = csv.DictReader(io.StringIO(content), delimiter=delimiter)
+            aliases = {"시간":"time", "날짜":"date", "일자":"date", "일시":"time", "datetime":"time",
+                       "시가":"open", "고가":"high", "저가":"low", "종가":"close", "거래량":"volume", "vol":"volume"}
+            lookup = {}
+            for name in reader.fieldnames or []:
+                key = name.strip().lower()
+                lookup[aliases.get(key, key)] = name
             time_key = lookup.get("time") or lookup.get("date") or lookup.get("timestamp")
             if not time_key or "close" not in lookup:
                 raise DataSourceError("TradingView CSV에는 time/date와 close 열이 필요합니다.")
@@ -318,7 +325,7 @@ class DataSources:
                     if value is None or value == "":
                         clean[field] = None
                     else:
-                        number = float(value)
+                        number = float(value.replace(",", "") if re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?", value.strip()) else value)
                         if not (-1e30 < number < 1e30):
                             raise ValueError()
                         clean[field] = number
@@ -326,6 +333,8 @@ class DataSources:
             if not rows:
                 raise DataSourceError("CSV에 데이터 행이 없습니다.")
             return rows
+        except DataSourceError:
+            raise
         except (csv.Error, TypeError, ValueError):
             raise DataSourceError("CSV 가격·거래량은 숫자여야 합니다. TradingView 내보내기 형식을 확인하세요.") from None
 

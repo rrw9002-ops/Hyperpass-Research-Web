@@ -158,6 +158,8 @@ class Application:
         self.tv_jobs=TradingViewJobs(self.store)
         from .indicator_studio import IndicatorStudio
         self.indicators = IndicatorStudio(self.store)
+        from .research_desk import ResearchDesk
+        self.desk = ResearchDesk(self.store)
         self.indicator_generation = threading.Lock()
         self.lock = threading.RLock()
         self.provider = None
@@ -274,15 +276,17 @@ class Application:
         from .chart_lab import analyze_chart
         from .chart_pine import build_pine, PineExportError
         source=payload.get('source','yahoo')
-        symbol=DataSources._symbol(payload.get('symbol',''))
+        from .symbol_search import chart_symbol
+        symbol=chart_symbol(payload.get('symbol',''),source)
         if source=='yahoo':
             packet=self.sources.chart_history(symbol,payload.get('period','2y'),payload.get('interval','1d'))
         elif source=='tradingview':
             from .tradingview_chart import fetch_chart
             port=payload.get('port',9222)
             count=payload.get('count',500)
-            packet=fetch_chart(port=port,symbol=symbol,count=count)
-            packet.update(provider='tradingview',symbol=symbol,retrieved_at=now())
+            target = payload.get('target_id')
+            packet=fetch_chart(port=port,symbol=symbol,count=count,**({'target_id':target} if target else {}))
+            packet.update(provider='tradingview',symbol=symbol,port=port,retrieved_at=now())
         elif source=='csv':
             content=payload.get('csv','')
             if not isinstance(content,str) or not content.strip() or len(content)>900000:
@@ -486,7 +490,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Disposition',f'attachment; filename="{filename}"')
         self.end_headers()
         try: self.wfile.write(body)
-        except (BrokenPipeError,ConnectionResetError): pass
+        except ConnectionError: pass
 
     def do_GET(self):
         if not self.trusted(): return self.send(403,{'error':'로컬 앱에서만 접근할 수 있습니다.'})
@@ -495,6 +499,26 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/api/sources': return self.send(200,{'sources':self.app.source_catalog()})
         if path=='/api/ai': return self.send(200,{'providers':self.app.ai_catalog()})
         if path=='/api/library': return self.send(200,self.app.library())
+        if path == '/api/watchlist':
+            return self.send(200, {'items':self.app.desk.watchlist()})
+        if path == '/api/strategies':
+            return self.send(200, {'items':self.app.desk.strategies()})
+        if path == '/api/backtests':
+            return self.send(200, {'items':self.app.desk.list_jobs()})
+        backtest = re.fullmatch(r'/api/backtests/([a-f0-9]{32})',path)
+        if backtest:
+            job = self.app.desk.job(backtest[1])
+            return self.send(200,job) if job else self.send(404,{'error':'백테스트 기록을 찾을 수 없습니다.'})
+        if path in ('/api/symbols/resolve','/api/market-index'):
+            query = parse_qs(urlsplit(self.path).query)
+            try:
+                if path == '/api/market-index':
+                    from .chart_lab import market_index
+                    return self.send(200,market_index(self.app.sources,query.get('symbol',[''])[0]))
+                from .symbol_search import resolve_symbol
+                return self.send(200,resolve_symbol(query.get('q',[''])[0],query.get('target',['any'])[0]))
+            except (ValueError,OSError) as exc:
+                return self.send(400,{'error':str(exc)})
         if path == '/api/indicators':
             return self.send(200, {'indicators': self.app.indicators.list()})
         if path == '/api/tradingview/symbols':
@@ -556,9 +580,13 @@ class Handler(BaseHTTPRequestHandler):
                 report+='\n\n## 수집 출처 기록\n\n```json\n'+json.dumps(run.get('data',[]),ensure_ascii=False,indent=2)+'\n```\n'
                 if run.get('team_revision'): report+='\n\n팀 지침 버전: '+run['team_revision']+'\n'
                 return self.send(200,report.encode('utf-8'),'text/markdown; charset=utf-8',True if complete else 'intermediate')
+            if run.get('status') == 'completed' and run.get('mode') != 'demo':
+                from .research_desk import report_symbols
+                run['watch_candidates'] = report_symbols(run)
             return self.send(200,run)
         static={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/style.css':'style.css','/brain.js':'brain.js','/chart.js':'chart.js','/chart.css':'chart.css','/team.js':'team.js','/tradingview.js':'tradingview.js','/workspaces.css':'workspaces.css','/favicon.ico':None}
         static.update({'/symbol-search.js': 'symbol-search.js', '/indicator-lab.js': 'indicator-lab.js'})
+        static.update({f'/{name}':name for name in ('strategy-lab.js','strategy-lab.css','watchlist.js','watchlist.css')})
         static.update({'/fonts/PretendardVariable.woff2': 'fonts/PretendardVariable.woff2',
                        '/fonts/OFL.txt': 'fonts/OFL.txt'})
         if path in static and static[path]:
@@ -580,6 +608,19 @@ class Handler(BaseHTTPRequestHandler):
             payload=json.loads(self.rfile.read(length))
             if not isinstance(payload,dict): raise ValueError('입력 형식 오류')
             path=urlsplit(self.path).path
+            if path == '/api/watchlist':
+                return self.send(200,self.app.desk.follow(payload))
+            if path == '/api/watchlist/remove':
+                return self.send(200,self.app.desk.unfollow(payload.get('symbol')))
+            if path == '/api/watchlist/quote':
+                return self.send(200,self.app.desk.quote(payload.get('symbol'),self.app.sources))
+            if path == '/api/strategies':
+                return self.send(200 if payload.get('id') else 201,self.app.desk.save_strategy(payload))
+            if path == '/api/backtests':
+                return self.send(202,self.app.desk.start(payload))
+            cancel_job = re.fullmatch(r'/api/backtests/([a-f0-9]{32})/cancel',path)
+            if cancel_job:
+                return self.send(200,self.app.desk.cancel(cancel_job[1]))
             if path == '/api/indicators':
                 record = self.app.indicators.save(payload)
                 return self.send(200 if payload.get('id') else 201, record)

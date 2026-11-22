@@ -101,6 +101,12 @@ class DataSourceTests(unittest.TestCase):
             sources.fetch("tradingview", "NASDAQ:MSFT")
         self.assertFalse(transport.calls)
 
+    def test_imports_korean_csv_headers_and_reports_header_errors(self):
+        text = "날짜;시가;고가;저가;종가;거래량\n2026-01-15;100;120;90;110;1,000"
+        self.assertEqual(DataSources._csv_rows(text), [{"timestamp":"2026-01-15", "open":100,"high":120,"low":90,"close":110,"volume":1000}])
+        with self.assertRaisesRegex(DataSourceError, "close"):
+            DataSources._csv_rows("날짜,시가\n2026-01-15,100")
+
     def test_tradingview_scanner_is_explicitly_unofficial(self):
         transport = FakeTransport([{"data": [{"s": "NASDAQ:AAPL", "d": ["AAPL", 100, "USD", 1200, 1, "NASDAQ", "Apple"]}]}])
         sources = DataSources(transport)

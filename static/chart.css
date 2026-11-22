@@ -15,3 +15,16 @@
 }
 
 .chart-table-scroll tr:hover td { background: var(--glass-control); }
+
+.market-overview { padding: 16px 20px; }
+.market-overview-head, .market-pickers, .market-region { display:flex; align-items:center; gap:8px; }
+.market-overview-head { justify-content:space-between; flex-wrap:wrap; }
+.market-overview h2 { margin:3px 0; font-size:1.05rem; }
+.market-pickers { flex-wrap:wrap; }
+.market-region .chip[aria-pressed="true"] { color:var(--accent); border-color:var(--accent); }
+.market-pickers select { width:auto; max-width:100%; }
+#market-index-curve { width:100%; height:78px; display:block; }
+#market-index-curve[hidden] { display:none; }
+#market-index-info { margin:8px 0 4px; font-variant-numeric:tabular-nums; }
+#chart-symbol-matches:empty, #research-symbol-matches:empty, #chart-symbol-status:empty, #research-symbol-status:empty { display:none; }
+#chart-symbol-matches, #research-symbol-matches { max-height:180px; overflow-y:auto; }

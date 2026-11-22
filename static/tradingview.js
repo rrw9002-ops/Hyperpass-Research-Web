@@ -118,8 +118,9 @@
   }
   async function run(action,indicatorCode){
     if(state.busy||state.checking)return;
+    state.busy=true;sync();
     try{
-      const symbol=window.HyperpassSymbols.selected(),code=action==="indicator"?indicatorCode:$("tv-code").value;
+      const symbol=await window.HyperpassSymbols.selected(),code=action==="indicator"?indicatorCode:$("tv-code").value;
       if(!symbol)throw new Error("TradingView 종목을 입력하세요.");if(action==="backtest"&&!code.trim())throw new Error("실행할 Pine 전략 코드를 입력하세요.");
       const payload={action,port:port(),symbol,timeframe:$("tv-timeframe").value,indicators:action==="indicator"?[]:state.indicators.map(item=>({name:item.name,inputs:{...item.inputs}}))};if($("tv-target").value)payload.target_id=$("tv-target").value;if(action==="backtest"||action==="indicator")payload.code=code;
       state.busy=true;sync();feedback("tv-input-feedback","");$("tv-job-progress").hidden=false;$("tv-job-badge").textContent="요청 중";feedback("tv-job-message","TradingView 작업을 시작하고 있습니다.");

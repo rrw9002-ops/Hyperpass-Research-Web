@@ -34,8 +34,27 @@ ALIASES = (
 )
 
 
+# Provider-specific identifiers for the five index charts.
+INDICES = (
+    ("KRX:KOSPI", "코스피", "KOSPI", "^KS11"),
+    ("KRX:KOSDAQ", "코스닥", "KOSDAQ", "^KQ11"),
+    ("NASDAQ:IXIC", "나스닥 종합", "나스닥|나스닥종합지수|NASDAQ Composite", "^IXIC"),
+    ("SP:SPX", "S&P 500", "S&P|S&P500|SP500", "^GSPC"),
+    ("DJ:DJI", "다우존스 산업평균", "다우|다우지수|다우존스|Dow Jones", "^DJI"),
+)
+INDEX_YAHOO = {symbol: yahoo for symbol, _, _, yahoo in INDICES}
+SEARCH_ALIASES = ALIASES + tuple((symbol, name, aliases + "|" + yahoo) for symbol, name, aliases, yahoo in INDICES)
+KR_CODE = re.compile(r"[0-9][0-9A-Z]{5}")
+KR_BOARDS = {"kospi": ".KS", "kosdaq": ".KQ"}
+
 def _key(text):
     return "".join(unicodedata.normalize("NFKC", text).casefold().split())
+
+
+def _company_key(name):
+    suffix = r"\b(?:incorporated|inc|corporation|corp|company|co|limited|ltd|plc)\.?$"
+    value = re.sub(suffix, "", name.casefold().strip(), flags=re.IGNORECASE).rstrip(" ,.")
+    return _key(value)
 
 
 def _entry(symbol, name):
@@ -102,6 +121,37 @@ def _us_master(market):
         return rows, available
 
 
+def kr_listings(board):
+    """KIS published KRX symbol master, including board and security group."""
+    suffix = KR_BOARDS[board]
+    with _master_lock:
+        expires, rows, available = _masters.get(board, (0, (), False))
+        if expires > time.monotonic():
+            return rows, available
+        try:
+            filename = f"{board}_code.mst"
+            url = f"https://new.real.download.dws.co.kr/common/master/{filename}.zip"
+            with zipfile.ZipFile(io.BytesIO(_read(url, 4_000_000))) as archive:
+                member = archive.getinfo(filename)
+                if member.file_size > 8_000_000:
+                    raise ValueError("국내 종목 목록 크기 초과")
+                content = archive.read(member)
+            updated = []
+            for line in content.splitlines():
+                code = line[:9].decode("ascii", errors="ignore").strip()
+                name = line[21:61].decode("cp949", errors="replace").strip()
+                group = line[61:63].decode("ascii", errors="ignore").strip()
+                if KR_CODE.fullmatch(code) and name:
+                    updated.append(("KRX:" + code, name, code + suffix, group))
+            if not updated:
+                raise ValueError("국내 종목 목록이 비었습니다.")
+            rows, available, ttl = tuple(updated), True, 86400
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile):
+            available, ttl = False, 90
+        _masters[board] = (time.monotonic() + ttl, rows, available)
+        return rows, available
+
+
 def search_symbols(query):
     query = query.strip() if isinstance(query, str) else ""
     if not 1 <= len(query) <= 80:
@@ -125,7 +175,7 @@ def _search(query, cache_minute):
         if item["id"] not in matches or score < matches[item["id"]][0]:
             matches[item["id"]] = (score, item)
 
-    for symbol, name, aliases in ALIASES:
+    for symbol, name, aliases in SEARCH_ALIASES:
         names = [name, *aliases.split("|")]
         item = _entry(symbol, name)
         if any(term in _key(value) for value in [item["ticker"], *names]):
@@ -136,6 +186,13 @@ def _search(query, cache_minute):
             add(item, [item["name"]], 1 if primary else 3)
     except (ValueError, OSError, KeyError, TypeError):
         notices.append("TradingView 실시간 종목 검색에 연결하지 못했습니다.")
+
+    if re.search("[가-힣]", query) or KR_CODE.fullmatch(query.upper()):
+        for board in KR_BOARDS:
+            rows, _ = kr_listings(board)
+            for symbol, name, yahoo, _group in rows:
+                if term in _key(name) or term == _key(yahoo.split(".")[0]):
+                    add(_entry(symbol, name), [name, yahoo], 1)
 
     if re.search("[가-힣]", query):
         complete = True
@@ -148,4 +205,107 @@ def _search(query, cache_minute):
         if not complete:
             notices.append("미국 종목 한글명 목록의 일부를 갱신하지 못했습니다.")
     result = [item for _, item in sorted(matches.values(), key=lambda pair: pair[0])[:15]]
-    return {"results": result, "notice": " ".join(notices)}
+    return {"results": result, "notice": " ".join(notices),
+            "exact": [item["id"] for score, item in matches.values() if score[0] == 0]}
+
+
+def _direct(query):
+    term = _key(query)
+    for symbol, name, aliases, yahoo in INDICES:
+        if term in map(_key, (symbol, symbol.split(":")[1], name, *aliases.split("|"), yahoo)):
+            return dict(_entry(symbol, name), yahoo=yahoo)
+    matches = []
+    for symbol, name, aliases in ALIASES:
+        if term in map(_key, (symbol, symbol.split(":")[1], name, *aliases.split("|"))):
+            item = _entry(symbol, name)
+            # The bundled KRX aliases are specifically KOSPI listings.
+            item["yahoo"] = item["ticker"] + ".KS" if item["exchange"] == "KRX" else item["ticker"]
+            matches.append(item)
+    if len(matches) > 1:
+        raise ValueError("같은 이름에 여러 주식 종류가 있습니다. 검색 결과에서 거래소와 종목을 선택하세요.")
+    return matches[0] if matches else None
+
+
+def _provider_entry(item, target):
+    exchange, ticker = item["exchange"], item["ticker"]
+    yahoo = INDEX_YAHOO.get(item["id"], "")
+    if not yahoo and exchange in (*MARKETS.values(), "NYSEARCA", "ARCA", "BATS"):
+        yahoo = ticker.replace(".", "-")
+    elif not yahoo and exchange == "KRX" and target != "tradingview":
+        direct = _direct(item["id"])
+        if direct:
+            yahoo = direct["yahoo"]
+        else:
+            for board in KR_BOARDS:
+                found = next((row for row in kr_listings(board)[0] if row[0] == item["id"]), None)
+                if found:
+                    yahoo = found[2]
+                    item = _entry(found[0], found[1])
+                    break
+    if target == "yahoo" and not yahoo:
+        raise ValueError("이 거래소의 Yahoo 티커를 확인할 수 없습니다. Yahoo의 거래소 접미사까지 입력하세요.")
+    return dict(item, yahoo=yahoo)
+
+
+def resolve_symbol(query, target="any"):
+    """Resolve a student's one-field input. Never invent a KOSPI/KOSDAQ board."""
+    if not isinstance(query, str) or not 1 <= len(query.strip()) <= 80:
+        raise ValueError("종목명 또는 티커 하나를 입력하세요.")
+    if target not in ("yahoo", "tradingview", "any"):
+        raise ValueError("종목을 조회할 데이터 출처를 확인하세요.")
+    query = query.strip()
+    key = query.upper()
+    direct = _direct(query)
+    if direct:
+        return direct
+    korean_yahoo = re.fullmatch(r"([0-9][A-Z0-9]{5})\.(KS|KQ)", key)
+    if korean_yahoo:
+        code, suffix = korean_yahoo.groups()
+        entry = _direct(code) or _entry("KRX:" + code, code)
+        return dict(entry, yahoo=key)
+    if SYMBOL_ID.fullmatch(key):
+        return _provider_entry(_entry(key, key.split(":", 1)[1]), target)
+    # Explicit Yahoo identifiers are usable even when the name service is offline.
+    yahoo_format = re.fullmatch(r"(?:\^[A-Z0-9.]+|[A-Z0-9-]+[.=][A-Z0-9]+|[A-Z]+-[A-Z]+)", key)
+    if yahoo_format and target != "tradingview" and not re.fullmatch(r"[A-Z]+\.[AB]", key):
+        return {"id": "", "name": key, "ticker": key, "exchange": "", "yahoo": key}
+    if KR_CODE.fullmatch(key):
+        for board in KR_BOARDS:
+            match = next((row for row in kr_listings(board)[0] if row[0] == "KRX:" + key), None)
+            if match:
+                return dict(_entry(match[0], match[1]), yahoo=match[2])
+        if target == "tradingview":
+            return dict(_entry("KRX:" + key, key), yahoo="")
+        raise ValueError("국내 종목의 상장 시장을 확인하지 못했습니다. 코스피는 .KS, 코스닥은 .KQ를 붙여 입력하세요.")
+    payload = search_symbols(query)
+    rows = payload["results"]
+    exact = [r for r in rows if r["id"] in payload.get("exact", ())]
+    if not exact:
+        named = [r for r in rows if r["exchange"] in MARKETS.values() and _company_key(r["name"]) == _company_key(query)]
+        if len(named) == 1:
+            return _provider_entry(named[0], target)
+    us = [r for r in exact if r["exchange"] in MARKETS.values() and r["ticker"] == key]
+    if len(us) == 1:
+        return _provider_entry(us[0], target)
+    if len(exact) == 1 or (not exact and len(rows) == 1):
+        return _provider_entry((exact or rows)[0], target)
+    if not exact and not rows and target != "tradingview" and re.fullmatch("[A-Z]{1,6}", key):
+        return {"id": "", "name": key, "ticker": key, "exchange": "", "yahoo": key}
+    if rows:
+        raise ValueError("여러 종목이 일치합니다. 검색 결과에서 원하는 종목을 한 번 선택하세요.")
+    raise ValueError("이름이나 티커에 맞는 종목을 찾지 못했습니다. 철자 또는 거래소를 확인하세요.")
+
+
+def chart_symbol(value, source):
+    target = "tradingview" if source == "tradingview" else "yahoo"
+    if isinstance(value, str):
+        query = value.strip()
+        key = query.upper()
+        if source == "csv" and SYMBOL_ID.fullmatch(key):
+            return key
+        # Accept API callers already passing a provider-native ticker.
+        if target == "yahoo" and re.fullmatch(r"[A-Z.^=_0-9-]{1,32}", query) and not KR_CODE.fullmatch(query):
+            known = _direct(query)
+            return known["yahoo"] if known else query
+    result = resolve_symbol(value, target)
+    return result["id"] if target == "tradingview" else result["yahoo"]

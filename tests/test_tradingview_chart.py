@@ -31,6 +31,23 @@ class ChartTests(unittest.TestCase):
         self.assertTrue(result["as_of"].endswith("+00:00"))
         read.assert_called_once_with(target()["webSocketDebuggerUrl"], 9222, 100)
 
+    def test_delayed_korean_feed_keeps_observed_venue(self):
+        with patch.object(tv, "_targets", return_value=[target()]), patch.object(tv, "_evaluate", return_value=chart("KRX_DLY:005930")):
+            packet = tv.fetch_chart(9222, "KRX:005930")
+            self.assertEqual(packet["observed_symbol"], "KRX_DLY:005930")
+            self.assertEqual(packet["symbol"], "KRX:005930")
+            with self.assertRaises(tv.TradingViewChartError):
+                tv.fetch_chart(9222, "KRX:005935")
+
+    def test_selected_tab_only_reads_its_timeframe_for_same_symbol(self):
+        target_a = dict(target(), id="tab-a")
+        target_b = dict(target("ws://127.0.0.1:9222/devtools/page/tab-b"), id="tab-b")
+        with patch.object(tv, "_targets", return_value=[target_a, target_b]), patch.object(tv, "_evaluate", return_value=chart()) as read:
+            tv.fetch_chart(9222, "NASDAQ:AAPL", 100, target_id="tab-b")
+            read.assert_called_once_with(target_b["webSocketDebuggerUrl"], 9222, 100)
+            with self.assertRaises(tv.TradingViewChartError):
+                tv.fetch_chart(9222, "NASDAQ:AAPL", target_id="closed-tab")
+
     def test_symbol_is_verified_from_chart_not_page_title(self):
         with patch.object(tv, "_targets", return_value=[target()]), patch.object(tv, "_evaluate", return_value=chart("NYSE:MSFT")):
             with self.assertRaises(tv.TradingViewChartError):

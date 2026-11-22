@@ -16,6 +16,7 @@ import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
+from .tradingview_chart import same_chart_symbol as _same_chart_symbol
 from .tradingview_chart import _port, _targets, _valid_ws, _WebSocket, TradingViewChartError
 from .pine_indicator import indicator_title
 
@@ -365,13 +366,6 @@ def _validate_config(symbol, timeframe, indicators):
 
 def _same_timeframe(a, b):
     return re.sub(r"^1([SDWM])$", r"\1", str(a)) == re.sub(r"^1([SDWM])$", r"\1", str(b))
-
-
-def _same_chart_symbol(observed, requested):
-    observed = str(observed).upper()
-    return observed == requested or (
-        requested.startswith("KRX:") and observed == "KRX_DLY:" + requested.split(":", 1)[1]
-    )
 
 
 def configure_chart(port=9222, symbol=None, timeframe=None, indicators=None, target_id=None):

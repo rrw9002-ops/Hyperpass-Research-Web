@@ -330,6 +330,7 @@
     if (run.mode === "demo") { const note = el("p", "sample-notice", "화면 체험용 고정 샘플입니다. AI 분석이나 실시간 데이터 조회 결과가 아닙니다."); content.prepend(note); }
     if (run.error && run.report) content.prepend(el("p", "sample-notice", run.error));
     renderArtifacts(run.artifacts || []); renderEvents(run.events || []);
+    document.dispatchEvent(new CustomEvent('hyperpass:report', {detail:run}));
   }
   async function selectRun(id) {
     selectWorkspace('research');
@@ -361,7 +362,8 @@
       const fullQuestion=question+"\n\n[질문 범주: "+CATEGORIES[state.category].name+"]";
       if(fullQuestion.length>12000)throw new Error("질문과 분석 범위가 너무 깁니다. 12,000자 이내로 줄여 주세요.");
       const models=mode==="live"?modelConfiguration():undefined;
-      const data = await api("/api/runs", {method:"POST", body:{category:state.category,brief,target_role:mode==='live'?$("target-role").value:null,chart_id:mode==='live'?state.chart?.id:null,tv_job_id:mode==='live'?state.tvJob?.id:null,model_config:models,question: mode === "demo" ? "가상 기업의 사업 품질 개선 여부를 검토해줘." : fullQuestion, evidence:$("evidence").value, context:{investor_context:$("investor-context").value,brain:$("brain").value,strategy:$("strategy").value,memory:$("memory").value}, max_calls:Number($("max-calls").value),web_search:mode === "live" && $("web-search").checked, mode, symbol:$("symbol").value.trim(),providers:mode === "demo" ? [] : providers}});
+      const instrument=mode==="live" && $("symbol").value.trim() ? await window.HyperpassSymbols.field("symbol","any") : null;
+      const data = await api("/api/runs", {method:"POST", body:{category:state.category,brief,target_role:mode==='live'?$("target-role").value:null,chart_id:mode==='live'?state.chart?.id:null,tv_job_id:mode==='live'?state.tvJob?.id:null,model_config:models,question: mode === "demo" ? "가상 기업의 사업 품질 개선 여부를 검토해줘." : fullQuestion, evidence:$("evidence").value, context:{investor_context:$("investor-context").value,brain:$("brain").value,strategy:$("strategy").value,memory:$("memory").value}, max_calls:Number($("max-calls").value),web_search:mode === "live" && $("web-search").checked, mode, symbol:instrument?.yahoo || instrument?.id || "",providers:mode === "demo" ? [] : providers}});
       $("form-feedback").textContent = mode === "demo" ? "샘플 화면입니다. 실제 분석은 API 연결 후 리서치 시작을 눌러 주세요." : "작업이 시작되었습니다. 진행 기록에서 배정과 검토 과정을 확인할 수 있습니다.";
       await refreshStatus(); await selectRun(data.id); selectTab("activity");
     } catch (e) { error(e.message); $("form-feedback").textContent = "요청이 완료되지 않았습니다. 오류를 확인한 뒤 다시 시도하세요."; }
@@ -373,6 +375,7 @@
     selectWorkspace('research');
     if (isActive(state.run)) { $("form-feedback").textContent = "현재 분석이 진행 중입니다. 완료될 때까지 기다리거나 중단한 뒤 새 분석을 시작하세요."; return; }
     state.chart=null; state.tvJob=null; renderChartAttachment();
+    document.dispatchEvent(new CustomEvent('hyperpass:report', {detail:null}));
     state.selected = null; state.run = null; renderProgress(null); $("tab-report").textContent="통합 보고서"; clearTimeout(state.timer); renderRoles(); renderHistory(); $("run-meta").hidden = true; $("export-button").hidden = true; $("cancel-button").hidden = true; $("start-button").disabled = false; $("form-feedback").textContent = ""; $("report-content").replaceChildren(el("div", "empty-output", "새로운 질문의 근거와 독립 검토 결과가 여기에 표시됩니다.")); renderArtifacts([]); renderEvents([]); $("question").value = ""; $("question").focus(); selectTab("report");
   }
   function renderProviderOptions() {
@@ -443,7 +446,7 @@
     $("question").value = question;
     $("question").focus();
   }
-  window.HyperpassApp={api,selectWorkspace,openRun:selectRun,
+  window.HyperpassApp={api,selectWorkspace,openRun:selectRun,currentRun:()=>state.run,
     useTradingView:(id,result)=>{
       const symbol=result.chart?.symbol || "";
       beginChartQuestion(symbol,`${symbol || "TradingView"}의 실제 TradingView 백테스트 결과를 기술 분석해줘. 전략 규칙, 거래 횟수, 비용과 낙폭, 데이터 범위와 과최적화 가능성을 구분하고 추가 검증이 필요한 점을 정리해줘.`,null,{id,symbol:symbol || "TradingView"});
