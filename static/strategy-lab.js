@@ -575,9 +575,6 @@
     message("bt-tested-pine-feedback","이 실행에서 검증한 전체 Pine 코드와 주기를 저장했습니다.");
   }));
   document.addEventListener("hyperpass:workspace-change",onOpen);
-  // A saved Pine run can also be opened directly from Second Brain.
-  const tv = window.HyperpassTradingView, originalOpen = tv.open, originalResult = tv.openResult;
-  tv.open = id => { setMode("pine"); return originalOpen(id); };
-  tv.openResult = result => { setMode("pine"); return originalResult(result); };
+  document.addEventListener("hyperpass:show-pine-backtest", () => setMode("pine"));
   showRule(); setMode("market"); updateChartSource(); onOpen();
 })();

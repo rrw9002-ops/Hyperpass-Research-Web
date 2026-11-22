@@ -62,10 +62,19 @@ jobs:
         run: python tools/build_release.py ${{ matrix.package_args }}
       - name: Test the extracted executable ZIP
         run: python tools/smoke_installed.py --archive "dist/${{ matrix.archive }}" --output validation/archive-smoke.json
+      - name: Verify chart and strategy workflows in Chrome
+        if: runner.os == 'Windows'
+        env:
+          HYPERPASS_TEST_BROWSER: '1'
+          PYTHONUTF8: '1'
+        run: |
+          set -o pipefail
+          python -m pip install playwright==1.65.2
+          python -m unittest discover -s tests -p test_chart_studio_browser.py -v 2>&1 | tee validation/browser-tests.txt
       - name: Upload validated preview distribution
         uses: actions/upload-artifact@v4
         with:
-          name: Hyperpass-Research-Web-v0.6.1-preview-${{ matrix.artifact }}
+          name: Hyperpass-Research-Web-v0.6.2-preview-${{ matrix.artifact }}
           if-no-files-found: error
           path: |
             dist/${{ matrix.archive }}
@@ -74,6 +83,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: validation-v0.6.1-preview-${{ matrix.artifact }}
+          name: validation-v0.6.2-preview-${{ matrix.artifact }}
           if-no-files-found: warn
           path: validation/

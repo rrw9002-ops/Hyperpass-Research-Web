@@ -8,7 +8,7 @@
   function openItem(item) {
     const app=window.HyperpassApp;
     if(!app){$("brain-feedback").textContent="작업 공간 연결을 준비하고 있습니다. 잠시 후 다시 눌러 주세요.";return;}
-    const action=item.type==="chart"?app.openChart:item.type==="tradingview"?async id=>{app.selectWorkspace('tradingview');await window.HyperpassTradingView?.open(id);}:app.openRun;
+    const action=item.type==="chart"?app.openChart:item.type==="tradingview"?id=>window.HyperpassTradingView?.open(id):app.openRun;
     if(typeof action!=="function"){$("brain-feedback").textContent="이 기록을 여는 기능이 아직 준비되지 않았습니다.";return;}
     Promise.resolve(action(item.id)).catch(()=>{$("brain-feedback").textContent="기록을 열지 못했습니다. 앱 연결을 확인해 주세요.";});
   }

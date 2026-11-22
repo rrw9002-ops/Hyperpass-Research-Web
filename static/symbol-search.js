@@ -21,6 +21,7 @@
       input.value=item.name;
       status.textContent="선택한 종목 · " + item.id;
       matches.replaceChildren();
+      input.dispatchEvent(new CustomEvent("hyperpass:symbol-picked", {bubbles:true}));
       input.focus();
     }
     async function search(query, version) {

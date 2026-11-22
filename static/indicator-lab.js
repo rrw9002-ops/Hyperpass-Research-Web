@@ -1,8 +1,8 @@
 "use strict";
 (() => {
   const $ = id => document.getElementById(id);
-  const workspace = $("workspace-tradingview");
-  const outputPanel = workspace?.querySelector(".tv-job-panel");
+  const workspace = $("workspace-chart");
+  const outputPanel = $("chart-tv-lab")?.querySelector(".tv-job-panel");
   if (!outputPanel) return;
 
   const example = "최근 1년간 고점들을 추세선으로 연결해줘";
@@ -34,7 +34,7 @@ if barstate.islast
   const panel = document.createElement("section");
   panel.className = "panel tv-personal-panel";
   panel.setAttribute("aria-labelledby", "tv-personal-heading");
-  panel.innerHTML = `<div class="panel-heading"><div><h2 id="tv-personal-heading">개인 지표 · 추세선</h2></div></div>
+  panel.innerHTML = `<div class="panel-heading"><div><span class="section-kicker">PINE SCRIPT · TRADINGVIEW DESKTOP</span><h2 id="tv-personal-heading">개인 지표 · 추세선</h2></div></div>
     <div class="tv-panel-body">
       <label class="field-label" for="tv-personal-prompt">차트에 무엇을 표시할까요?</label>
       <textarea id="tv-personal-prompt" rows="2" maxlength="4000" placeholder="예: 최근 1년간 고점들을 추세선으로 연결해줘"></textarea>
@@ -46,11 +46,36 @@ if barstate.islast
         <label class="field-label" for="tv-personal-name">저장할 이름</label><input id="tv-personal-name" maxlength="120" placeholder="예: 나의 고점 추세선"></div></div>
       <label class="field-label" for="tv-personal-code">Pine 지표 코드</label>
       <textarea id="tv-personal-code" rows="10" maxlength="64000" spellcheck="false" placeholder='//@version=6&#10;indicator("나의 이동평균", overlay=true)&#10;plot(ta.sma(close, 20))'></textarea>
+      <div class="chart-tv-target-note"><p id="chart-tv-destination" class="cost-note" aria-live="polite"></p><button id="chart-tv-settings" type="button" class="text-button">Desktop 연결·주기 설정</button></div>
       <div class="workspace-actions"><button type="button" class="button ghost" id="tv-personal-save">내 지표에 저장</button>
-        <button type="button" class="button primary" id="tv-personal-apply">선택한 차트에 지표 적용 ↗</button></div>
+        <button type="button" class="button primary" id="tv-personal-apply">Desktop 차트에 지표 적용 ↗</button></div>
       <p id="tv-personal-feedback" class="feedback" role="status" aria-live="polite"></p>
     </div>`;
-  workspace.insertBefore(panel, outputPanel);
+  $("chart-tv-lab").prepend(panel);
+  $("chart-indicator-jump").addEventListener("click", () => {
+    panel.scrollIntoView({block:"start"});
+    $("tv-personal-prompt").focus({preventScroll:true});
+  });
+  function updateDestination() {
+    const symbol = $("chart-symbol").value.trim() || ($("chart-source").value === "tradingview" ? "열린 종목" : "종목 선택 필요");
+    const override = $("chart-tv-timeframe");
+    const interval = override.value ? override.selectedOptions[0].textContent : $("chart-source").value === "tradingview" ? "열린 차트 주기" : $("chart-interval").selectedOptions[0]?.textContent || "주기 선택 필요";
+    $("chart-tv-destination").textContent = "적용 대상 · " + symbol + " / " + interval + " · 연결된 TradingView Desktop 차트를 이 종목·주기로 설정하고 지표를 표시합니다.";
+  }
+  for (const id of ["chart-symbol", "chart-source", "chart-interval", "chart-tv-timeframe"]) {
+    $(id).addEventListener("input", updateDestination);
+    $(id).addEventListener("change", updateDestination);
+  }
+  document.addEventListener("hyperpass:chart-result", updateDestination);
+  document.addEventListener("hyperpass:symbol-picked", updateDestination);
+  updateDestination();
+  function openDesktopSettings() {
+    $("chart-desktop").open = true;
+    $("chart-desktop").scrollIntoView({block:"center"});
+    $("chart-port").focus({preventScroll:true});
+  }
+  $("chart-tv-settings").addEventListener("click", openDesktopSettings);
+  $("chart-tv-builtin-settings").addEventListener("click", openDesktopSettings);
   const prompt = $("tv-personal-prompt"), list = $("tv-personal-list"), name = $("tv-personal-name"), code = $("tv-personal-code");
   const setMessage = (message, error = false) => {
     const feedback = $("tv-personal-feedback");
@@ -152,7 +177,11 @@ if barstate.islast
     if (writing) return;
     if (!code.value.trim()) {setMessage("차트에 적용할 지표 코드를 입력하세요.",true);return;}
     setMessage("");
-    await window.HyperpassTradingView.applyIndicator(code.value);
+    const started = await window.HyperpassTradingView.applyIndicator(code.value);
+    if (!started) {
+      setMessage($("chart-tv-job-message").textContent, true);
+      return;
+    }
     outputPanel.scrollIntoView({behavior:"smooth",block:"start"});
   });
   document.addEventListener("hyperpass:workspace-change", load);
