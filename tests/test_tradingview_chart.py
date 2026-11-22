@@ -1,7 +1,9 @@
 import base64
 import hashlib
 import json
+import shutil
 import struct
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ from hyperpass import tradingview_chart as tv
 
 def chart(symbol="NASDAQ:AAPL"):
     return {"symbol": symbol, "timeframe": "D", "currency": "USD", "timezone": "America/New_York",
+            "series_symbol":symbol,"series_timeframe":"1D","series_completed":True,
             "bars": [{"time": 1700000000, "open": 100, "high": 105, "low": 99, "close": 103, "volume": 1000}],
             "studies": [{"id": "rsi1", "name": "Relative Strength Index", "values": [{"label": "RSI", "display_value": "52.3"}]}],
             "listed_studies": [{"id": "rsi1", "name": "RSI"}]}
@@ -20,6 +23,38 @@ def target(url="ws://127.0.0.1:9222/devtools/page/abc-123"):
 
 
 class ChartTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which('node'), 'optional JavaScript compatibility check')
+    def test_new_header_with_old_bars_is_rejected_until_main_series_completes(self):
+        program = """
+          let loading=true;
+          const series={
+            isLoading:()=>loading, isCompleted:()=>!loading, interval:()=>'1D',
+            symbolInfo:()=>({full_name:'KRX_DLY:000660'}),
+            bars:()=>({firstIndex:()=>0,lastIndex:()=>0,size:()=>1,
+              valueAt:()=>loading?[1,340,350,330,342.56,10]:[1,1117000,1124000,1096000,1113000,10]})
+          };
+          const chart={symbol:()=>'KRX_DLY:000660',resolution:()=>'1D',
+            dataReady:cb=>{cb();return true;},_chartWidget:{model:()=>({mainSeries:()=>series})}};
+          global.window={TradingViewApi:{_activeChartWidgetWV:{value:()=>chart}}};
+          async function read(){
+            return EXPRESSION;
+          }
+          (async()=>{
+            const before=await read();
+            loading=false;const after=await read();
+            console.log(JSON.stringify({before,close:after.bars[0].close}));
+          })().catch(e=>{console.error(e);process.exitCode=1;});
+        """.replace("EXPRESSION", tv.CHART_EXPRESSION.replace('__COUNT__','1'))
+        result=subprocess.run(['node'], input=program, text=True, capture_output=True, timeout=12)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(json.loads(result.stdout),{'before':{'error':'loading'},'close':1113000})
+
+    def test_bar_series_identity_and_timeframe_must_match_even_on_unchanged_chart(self):
+        for changed in ({"series_completed":False}, {"series_symbol":"BATS:AAPL"}, {"series_timeframe":"60"},
+                        {"series_timeframe":"1W"}, {"series_timeframe":""}, {"series_symbol":""}):
+            with self.subTest(changed=changed), self.assertRaisesRegex(tv.TradingViewChartError,"시계열"):
+                tv._normalize({**chart(), **changed},'NASDAQ:AAPL',100)
+
     def test_loaded_ohlcv_and_displayed_studies_preserve_time_uncertainty(self):
         with patch.object(tv, "_targets", return_value=[target()]), patch.object(tv, "_evaluate", return_value=chart()) as read:
             result = tv.fetch_chart(9222, "NASDAQ:AAPL")

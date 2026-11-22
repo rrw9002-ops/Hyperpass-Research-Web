@@ -99,7 +99,20 @@ _PROGRAM = r"""async function(action, p) {
     });
   }
   if(action==='status') return {chart:state(),capabilities:{chart:typeof chart.setSymbol==='function',indicators:typeof chart.createStudy==='function',pine_editor:!!editor(),strategy_reports:strategies().length>0},editor_open:!!editor()};
-  if(action==='configure') { if(p.symbol) chart.setSymbol(p.symbol,{}); if(p.timeframe) chart.setResolution(p.timeframe,{}); return {requested:true}; }
+  if(action==='configure') {
+    // A new symbol label can be visible while the bars still belong to the old series.
+    // Wait for the chart API's history-loaded callback for the requested change.
+    const loaded = await new Promise(resolve => {
+      const timer = setTimeout(() => resolve(false), 6500);
+      const done = ready => { clearTimeout(timer); resolve(ready); };
+      try {
+        const changed = p.symbol ? chart.setSymbol(p.symbol, () => done(true))
+                                 : chart.setResolution(p.timeframe, () => done(true));
+        Promise.resolve(changed).then(value => { if (value === false) done(false); }, () => done(false));
+      } catch (_) { done(false); }
+    });
+    return loaded ? {requested:true} : {error:'series_not_loaded'};
+  }
   if(action==='add_study') { const before=chart.getAllStudies().map(x=>x.id); const id=await chart.createStudy(p.name,false,false,[]); return {entity_id:typeof id==='string'?id:null,before}; }
   if(action==='set_inputs') {
     const s=chart.getStudyById(p.entity_id); if(!s) return {error:'study_missing'};
@@ -323,6 +336,7 @@ class _Session:
 def _check(value):
     if value.get("error"):
         messages = {"chart_unavailable": "현재 탭의 TradingView 차트가 아직 준비되지 않았습니다.",
+                    "series_not_loaded": "Desktop에서 새 종목·주기의 봉 로딩을 확인하지 못했습니다. 차트 로딩이 끝난 뒤 다시 조회하세요.",
                     "editor_unavailable": "Pine 편집기를 열지 못했습니다. TradingView 앱에서 Pine 편집기를 확인하세요.",
                     "new_script_unavailable": "새 Pine 문서를 만들지 못했습니다. TradingView 편집기의 새로 만들기 메뉴를 확인하세요.",
                     "source_changed_before_new_script": "백업 후 Pine 원문이 바뀌어 새 문서로 전환하지 않았습니다. 편집 내용을 확인하고 다시 실행하세요.",

@@ -314,9 +314,10 @@
  function storageState(result){
   const p=result.provenance;
   const delayed=result.provider==='tradingview' && /^KRX_DLY:/i.test(result.source_packet?.observed_symbol||'');
+  const legacyDesktop=result.provider==='tradingview' && !result.preview && !result.source_packet?.series_verification;
   $('chart-provenance').textContent=[sourceLabels[result.provider]||result.provider,`${p.bars}봉`,
     p.first_time.slice(0,10)+' — '+p.last_time.slice(0,10),p.currency,delayed?'KRX 지연 시세':null,
-    result.preview?'미리보기':'저장됨'].filter(Boolean).join(' · ');
+    result.preview?'미리보기':'저장됨',legacyDesktop?'이전 버전 저장본 · 종목·주기와 봉의 일치를 새로 조회해 확인하세요.':null].filter(Boolean).join(' · ');
   $('chart-conclusion').hidden=false;
   $('chart-save-preview').hidden=!result.preview;
   $('chart-save-preview').disabled=false;

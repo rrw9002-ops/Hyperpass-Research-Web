@@ -395,6 +395,8 @@ def analyze_chart(packet, options=None):
         if backtest['open_position']: warnings.append('종료 시 미청산 포지션이 있습니다. 총수익률은 마지막 종가 평가를 포함하며 완결 거래의 실현 손익과 다릅니다.')
         warnings.append('시간순 분할과 비용 2배 검사는 일부 검증일 뿐입니다. 파라미터·시장·국면 검증과 실제 모의 운용은 별도로 필요합니다.')
     provenance = {key:packet.get(key,'unknown') for key in ('provider','symbol','as_of','retrieved_at','source_url','currency','timeframe')}
+    if packet.get('provider')=='tradingview' and packet.get('series_verification'):
+        provenance['series_verification']=packet['series_verification']
     provenance.update({'bars':len(candles), 'first_time':candles[0]['timestamp'], 'last_time':candles[-1]['timestamp'],
                        'ohlcv_sha256':hashlib.sha256(json.dumps(candles,sort_keys=True,separators=(',',':')).encode()).hexdigest()})
     latest = {key:values[-1] for key,values in series.items()}

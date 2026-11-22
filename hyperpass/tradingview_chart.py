@@ -28,12 +28,29 @@ class TradingViewChartError(ValueError):
 
 # This expression is fixed. Only a validated integer count is substituted.
 # It calls getters only: no symbol/timeframe changes, studies, orders or scripts.
-CHART_EXPRESSION = r"""(() => {
+CHART_EXPRESSION = r"""(async () => {
   const chart = window.TradingViewApi?._activeChartWidgetWV?.value();
   if (!chart) return {error:'chart_unavailable'};
+  const requestedSymbol=chart.symbol(), requestedInterval=String(chart.resolution());
+  if (typeof chart.dataReady !== 'function') return {error:'unsupported_readiness'};
+  const ready = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(false), 5500);
+    const done = loaded => { clearTimeout(timer); resolve(loaded); };
+    try {
+      const pending = chart.dataReady(() => done(true));
+      if (pending === true) done(true);
+      else if (pending && typeof pending.then === 'function') pending.then(done, () => done(false));
+    } catch (_) { done(false); }
+  });
+  if (!ready || chart.symbol()!==requestedSymbol || String(chart.resolution())!==requestedInterval)
+    return {error:'loading'};
   const model = chart._chartWidget.model();
   const series = model.mainSeries();
-  if (typeof chart.dataReady === 'function' && chart.dataReady(() => {}) === false) return {error:'loading'};
+  // The widget's metadata and ready callback can update before the price history.
+  // Snapshot the main series' completion state and its OHLCV in one synchronous turn.
+  if (typeof series.isLoading !== 'function' || typeof series.isCompleted !== 'function')
+    return {error:'unsupported_readiness'};
+  if (series.isLoading() !== false || series.isCompleted() !== true) return {error:'loading'};
   const bars = series.bars();
   const rows = [];
   const last = bars.lastIndex();
@@ -69,6 +86,8 @@ CHART_EXPRESSION = r"""(() => {
   let listed = [];
   try { listed = chart.getAllStudies().map(s => ({id:s.id,name:s.name || s.title || 'unknown'})); } catch (_) {}
   return {symbol:chart.symbol(),timeframe:String(chart.resolution()),currency:info.currency_code || info.currency || 'unknown',
+    series_symbol:info.full_name || '',series_timeframe:typeof series.interval==='function' ? String(series.interval()) : '',
+    series_completed:true,
     instrument_name:info.description || '',timezone:info.timezone || 'unknown',bars:rows,studies,listed_studies:listed,total_available:bars.size()};
 })()"""
 
@@ -214,7 +233,7 @@ def _evaluate(url, port, count):
     try:
         ws.send(json.dumps({"id": 1, "method": "Runtime.evaluate", "params": {
             "expression": CHART_EXPRESSION.replace("__COUNT__", str(count)),
-            "returnByValue": True, "awaitPromise": False, "timeout": 8000,
+            "returnByValue": True, "awaitPromise": True, "timeout": 8000,
         }}).encode())
         deadline = time.monotonic() + TIMEOUT
         for _ in range(32):
@@ -227,6 +246,8 @@ def _evaluate(url, port, count):
             if message.get("error") or result.get("exceptionDetails"):
                 raise TradingViewChartError("현재 TradingView 차트에서 데이터를 읽지 못했습니다. 차트 로딩과 앱 버전을 확인하세요.")
             value = result.get("result", {}).get("value")
+            if isinstance(value,dict) and value.get("error") in ("loading","unsupported_readiness"):
+                raise TradingViewChartError("Desktop에서 선택한 차트의 봉 로딩 완료를 확인하지 못했습니다. 차트를 열어 로딩이 끝난 뒤 다시 조회하세요.")
             if not isinstance(value, dict) or value.get("error"):
                 raise TradingViewChartError("현재 탭에 읽을 수 있는 TradingView 차트가 없습니다.")
             return value
@@ -252,6 +273,13 @@ def _normalize(raw, symbol, count):
     observed = str(raw.get("symbol", "")).upper()
     if not same_chart_symbol(observed, symbol):
         raise TradingViewChartError("현재 TradingView 차트의 종목이 요청한 심볼과 다릅니다. 앱에서 해당 차트를 직접 여세요.")
+    series_symbol = raw.get("series_symbol")
+    series_timeframe = raw.get("series_timeframe")
+    def resolution(value):
+        return re.sub(r"^1([SDWM])$", r"\1", str(value or "").upper())
+    if (raw.get('series_completed') is not True or not same_chart_symbol(series_symbol, symbol) or not series_timeframe
+            or resolution(series_timeframe) != resolution(raw.get("timeframe"))):
+        raise TradingViewChartError("Desktop 가격 시계열의 종목·주기가 아직 일치하지 않습니다. 차트가 다 로드된 뒤 다시 조회하세요.")
     bars = raw.get("bars")
     if not isinstance(bars, list) or not bars or len(bars) > count:
         raise TradingViewChartError("현재 차트에서 유효한 OHLCV 봉을 읽지 못했습니다.")
@@ -293,6 +321,7 @@ def _normalize(raw, symbol, count):
                        for v in values[:80] if isinstance(v, dict)] if isinstance(values, list) else [],
             "value_time": "data_window_selection_unknown"})
     return {"provider": "tradingview", "mode": "desktop-chart-cdp", "symbol": symbol, "observed_symbol": observed,
+            "series_verification": {"method":"loaded-series-v1","symbol":series_symbol,"timeframe":series_timeframe},
             "instrument_name": str(raw.get("instrument_name") or "")[:180], "records": records, "studies": normalized, "listed_studies": raw.get("listed_studies", [])[:80],
             "timeframe": str(raw.get("timeframe", "unknown"))[:40], "currency": str(raw.get("currency", "unknown"))[:30],
             "chart_timezone": str(raw.get("timezone", "unknown"))[:80], "as_of": as_of,
@@ -360,8 +389,10 @@ def fetch_selected_chart(port, symbol, count, target_id, timeframe):
     if new_symbol or new_interval:
         applied = configure_chart(port, symbol=new_symbol, timeframe=new_interval, target_id=target_id)
         if applied.get('status') != 'configured' or applied.get('target_id') != target_id:
-            raise TradingViewChartError('선택한 Desktop 창의 종목·주기를 변경하지 못했습니다. 차트와 데이터 이용 권한을 확인하세요.')
-    deadline = time.monotonic() + (8 if new_symbol or new_interval else 1)
+            note=next(iter(applied.get('warnings') or []),'선택한 Desktop 창의 종목·주기와 봉 로딩을 확인하지 못했습니다. Desktop 차트가 준비된 후 다시 조회하세요.')
+            raise TradingViewChartError(note)
+    # A manually changed tab can already display the requested label before its history arrives.
+    deadline = time.monotonic() + 8
     while True:
         try:
             packet = fetch_chart(port, symbol, count, target_id=target_id)
