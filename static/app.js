@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   const $ = id => document.getElementById(id);
-  const state = {csrf: "", connected: false, model: "gpt-5-mini", roles: [], sources: [], aiProviders: [], category: "stock", roleOverrides: {}, runs: [], selected: null, run: null, timer: null, polling: false, submitting: false, alive: true, chart: null, tvJob:null};
+  const state = {csrf: "", connected: false, roles: [], sources: [], aiProviders: [], category: "stock", roleOverrides: {}, runs: [], selected: null, run: null, timer: null, polling: false, submitting: false, alive: true, chart: null, tvJob:null};
   const DEFAULT_ROLES = [
     ["fundamental-analyst", "Fundamental Analyst", "기업 · 재무 · 회계 품질"], ["technical-analyst", "Technical Analyst", "가격 · 추세 · 거래량"], ["news-analyst", "News Analyst", "공시 · 사건 · 내러티브"],
     ["macro-analyst", "Macro Analyst", "금리 · 환율 · 전달 경로"], ["instrument-analyst", "Instrument Analyst", "ETF · 지수 · 상품 구조"], ["valuation-analyst", "Valuation Analyst", "가치 · 기대 · 민감도"],
@@ -41,22 +41,34 @@
     const connected = state.aiProviders.filter(p => p.connected);
     state.connected = connected.length > 0 || state.connected;
     $("connection-button").classList.toggle("connected", state.connected);
-    $("connection-label").textContent = connected.length ? `${connected.length}개 AI 연결됨` : state.connected ? `${state.model} 연결됨` : "AI 연결 필요";
+    $("connection-label").textContent = connected.length ? `${connected.length}개 AI 연결됨` : state.connected ? "AI 연결됨" : "AI 연결 필요";
     $("onboarding").hidden = state.connected;
   }
   const aiInfo = id => state.aiProviders.find(p => p.id === id);
   const modelId = model => typeof model === "string" ? model : model.id || model.name || "";
-  const defaultModel = p => p?.model || p?.default_model || p?.suggested_model || (p?.id === "openai" ? "gpt-5-mini" : "");
+  const connectedModel = p => p?.connected ? p.model || "" : "";
+  const manualModel = " ";
+  const runChoices = new Map();
   function modelList(id, target) {
-    const list = $(target); list.replaceChildren();
-    for (const item of aiInfo(id)?.models || []) { const option = el("option"); option.value = modelId(item); if (typeof item === "object" && item.name && item.name !== option.value) option.label = item.name; list.append(option); }
+    const list = $(target), isRun = target === "run-model-list";
+    const input = $(isRun ? "run-model" : "model"), label = $(isRun ? "run-model-label" : "connect-model-label");
+    const provider = aiInfo(id), models = new Map();
+    for (const item of provider?.models || []) models.set(modelId(item), item.name || modelId(item));
+    if (connectedModel(provider) && !models.has(provider.model)) models.set(provider.model, provider.model);
+    list.replaceChildren(new Option("모델을 선택하세요", ""));
+    for (const [model, name] of models) list.add(new Option(name === model ? model : `${name} · ${model}`, model));
+    list.add(new Option("모델 ID 직접 입력", manualModel));
+    const value = input.value.trim();
+    list.value = value && !models.has(value) ? manualModel : value;
+    list.hidden = !models.size;
+    input.hidden = !list.hidden && list.value !== manualModel;
+    label.htmlFor = list.hidden ? input.id : list.id;
   }
   function renderConnectProvider(resetModel = false) {
     const id = $("connect-provider").value, provider = aiInfo(id);
     $("ai-provider-status").textContent = provider?.connected ? `${AI_NAMES[id]} · 실제 API 연결 확인됨` : `${AI_NAMES[id]} · 아직 연결하지 않았습니다.`;
     $("disconnect-button").hidden = !provider?.connected;
-    $("refresh-models").disabled = false;
-    if (resetModel) $("model").value = defaultModel(provider || {id});
+    if (resetModel) $("model").value = connectedModel(provider);
     $("model").placeholder = id === "anthropic" ? "Claude 모델 ID" : id === "gemini" ? "Gemini 모델 ID" : "OpenAI 모델 ID";
     modelList(id,"connect-model-list");
   }
@@ -71,8 +83,8 @@
     select.value=choices.some(o=>(o.id || o.value || o)===prior)?prior:"default";
   }
   let reasoningRequest=0;
-  async function refreshReasoning() {
-    const provider=$("run-provider").value,model=$("run-model").value.trim(),prior=$("run-reasoning").value;
+  async function refreshReasoning(prior=$("run-reasoning").value) {
+    const provider=$("run-provider").value,model=$("run-model").value.trim();
     const revision=++reasoningRequest;fillReasoning($("run-reasoning"),reasoningOptions(provider,model),prior);
     if(!provider || !model)return;
     try{const data=await api(`/api/ai/${encodeURIComponent(provider)}/reasoning?model=${encodeURIComponent(model)}`);if(revision===reasoningRequest)fillReasoning($("run-reasoning"),data.options || [],prior);}catch{ /* The catalog/default remains valid; custom unsupported effort is never invented. */ }
@@ -92,6 +104,7 @@
       if(!(data.options || []).some(o=>(o.id || o.value || o)==="medium"))throw new Error("이 앱에서 medium 설정을 확인하지 못했습니다. 기존 설정을 유지합니다.");
       $("run-provider").value="openai";$("run-model").value="gpt-5.4";
       modelList("openai","run-model-list");fillReasoning($("run-reasoning"),data.options,"medium");renderModelCapability();
+      runChoices.set("openai",{model:"gpt-5.4",reasoning:"medium"});
       const overrides=Object.keys(state.roleOverrides).length;
       $("verified-model-feedback").textContent=`다음 질문의 기본 설정에 GPT-5.4 / medium을 적용했습니다.${overrides?` 역할별 별도 설정 ${overrides}개는 그대로 유지합니다.`:""} 리서치 시작을 눌러야 분석이 실행됩니다.`;
     }catch(e){$("verified-model-feedback").textContent=e.message;}
@@ -107,13 +120,26 @@
       for (const p of state.aiProviders.filter(p=>p.connected)) { const o=el("option","",p.name || AI_NAMES[p.id] || p.id); o.value=p.id; select.append(o); }
       const input=el("input"); input.setAttribute("aria-label",`${role.name} 모델`); input.maxLength=150; input.placeholder="기본 모델 상속";
       const list=el("datalist"); list.id=`role-model-list-${role.id}`; input.setAttribute("list",list.id);
-      const prior=state.roleOverrides[role.id]; select.value=prior?.provider || ""; input.value=prior?.model || ""; input.disabled=!select.value;
+      const prior=state.roleOverrides[role.id];
+      if(prior && !aiInfo(prior.provider)?.connected)select.add(new Option(`${AI_NAMES[prior.provider]} · 연결 필요`,prior.provider));
+      select.value=prior?.provider || ""; input.value=prior?.model || ""; input.disabled=!select.value;
       const reasoning=el("select");reasoning.setAttribute("aria-label",`${role.name} 추론 강도`);reasoning.disabled=!select.value;fillReasoning(reasoning,reasoningOptions(select.value,input.value),prior?.reasoning || "default");
       function updateList() { list.replaceChildren(); for(const item of aiInfo(select.value)?.models || []) { const option=el("option"); option.value=modelId(item); list.append(option); } }
       updateList();
-      select.addEventListener("change",()=>{ input.disabled=!select.value; reasoning.disabled=!select.value; input.value=select.value?defaultModel(aiInfo(select.value)):""; fillReasoning(reasoning,reasoningOptions(select.value,input.value)); if(select.value) state.roleOverrides[role.id]={provider:select.value,model:input.value,reasoning:"default"}; else delete state.roleOverrides[role.id]; updateList(); renderModelCapability(); });
+      select.addEventListener("change",()=>{ input.disabled=!select.value; reasoning.disabled=!select.value; input.value=connectedModel(aiInfo(select.value)); fillReasoning(reasoning,reasoningOptions(select.value,input.value)); if(select.value) state.roleOverrides[role.id]={provider:select.value,model:input.value,reasoning:"default"}; else delete state.roleOverrides[role.id]; updateList(); renderModelCapability(); });
       input.addEventListener("input",()=>{if(select.value)state.roleOverrides[role.id]={provider:select.value,model:input.value.trim(),reasoning:reasoning.value};});
-      input.addEventListener("change",async()=>{const model=input.value.trim();fillReasoning(reasoning,reasoningOptions(select.value,model));if(select.value){try{const data=await api(`/api/ai/${encodeURIComponent(select.value)}/reasoning?model=${encodeURIComponent(model)}`);if(input.value.trim()===model)fillReasoning(reasoning,data.options || []);}catch{}state.roleOverrides[role.id]={provider:select.value,model,reasoning:reasoning.value};}});
+      input.addEventListener("change",async()=>{
+        const provider=select.value, model=input.value.trim();
+        fillReasoning(reasoning,reasoningOptions(provider,model));
+        if(!provider)return;
+        const assignment={provider,model,reasoning:"default"};
+        state.roleOverrides[role.id]=assignment;
+        if(!model)return;
+        try{
+          const data=await api(`/api/ai/${encodeURIComponent(provider)}/reasoning?model=${encodeURIComponent(model)}`);
+          if(state.roleOverrides[role.id]===assignment && input.isConnected)fillReasoning(reasoning,data.options || []);
+        }catch{}
+      });
       reasoning.addEventListener("change",()=>{if(select.value)state.roleOverrides[role.id]={provider:select.value,model:input.value.trim(),reasoning:reasoning.value};});
       row.append(select,input,reasoning,list); target.append(row);
     }
@@ -123,21 +149,33 @@
     const p=aiInfo($("run-provider").value);
     const caps=p?.capabilities || {};
     const supports = typeof caps === "object" ? (caps.web_search ?? caps.native_web_search ?? caps.search) : undefined;
-    $("model-capability").textContent = !p?.connected ? "사용할 AI를 먼저 등록하세요. 연결된 서비스만 선택할 수 있습니다." : `${p.name || AI_NAMES[p.id]}에 등록한 키로 이번 질문을 실행합니다. ${supports === false ? "이 연결은 모델의 직접 웹 검색을 제공하지 않습니다. 연결한 데이터·제공 자료를 사용하세요." : "웹 검색 지원은 선택한 서비스와 모델에 따라 달라집니다."} 역할별로 다른 AI를 지정하면 해당 AI에도 질문과 필요한 근거가 전달됩니다.`;
+    $("model-capability").textContent = !p?.connected ? (state.aiProviders.some(item=>item.connected) ? "이번 질문에 사용할 AI 서비스를 선택하세요." : "AI 연결 관리에서 사용할 서비스와 모델을 등록하세요.") : `${p.name || AI_NAMES[p.id]}에 등록한 키로 이번 질문을 실행합니다. ${supports === false ? "이 연결은 모델의 직접 웹 검색을 제공하지 않습니다. 연결한 데이터·제공 자료를 사용하세요." : "웹 검색 지원은 선택한 서비스와 모델에 따라 달라집니다."} 역할별로 다른 AI를 지정하면 해당 AI에도 질문과 필요한 근거가 전달됩니다.`;
   }
-  function renderAISelection() {
-    const select=$("run-provider"), prior=select.value, priorModel=$("run-model").value;
+  function renderAISelection(preferredProvider) {
+    const select=$("run-provider"), prior=select.value;
     select.replaceChildren();
     const connected=state.aiProviders.filter(p=>p.connected);
-    if(!connected.length){const empty=el("option","","연결한 AI가 없습니다"); empty.value=""; select.append(empty);}
+    if(connected.length!==1){
+      const empty=el("option","",connected.length?"이번 질문의 AI를 선택하세요":"연결한 AI가 없습니다");
+      empty.value=""; select.append(empty);
+    }
     for(const p of connected){const option=el("option","",p.name || AI_NAMES[p.id] || p.id);option.value=p.id;select.append(option);}
-    select.value=connected.some(p=>p.id===prior)?prior:(connected[0]?.id || "");
-    $("run-model").value=select.value===prior && priorModel?priorModel:defaultModel(aiInfo(select.value));
-    $("run-model").disabled=!connected.length; modelList(select.value,"run-model-list"); renderRoleAssignments(); renderModelCapability(); renderConnectProvider(); renderConnection(); refreshReasoning();
+    const wanted=preferredProvider || prior;
+    select.value=connected.some(p=>p.id===wanted)?wanted:(connected.length===1?connected[0].id:"");
+    applyRunChoice();
+    renderRoleAssignments(); renderConnectProvider(); renderConnection();
   }
-  async function refreshAI() {
+  function applyRunChoice() {
+    const id=$("run-provider").value, provider=aiInfo(id), choice=runChoices.get(id);
+    $("run-model").value=choice?.model ?? connectedModel(provider);
+    $("run-model").disabled=!provider?.connected;
+    $("run-model").placeholder=provider?.connected?"사용할 모델 ID 입력":"AI를 먼저 선택하세요";
+    modelList(id,"run-model-list"); renderModelCapability(); refreshReasoning(choice?.reasoning || "default");
+  }
+  async function refreshAI(preferredProvider) {
     const data=await api("/api/ai"); state.aiProviders=Array.isArray(data.providers)?data.providers:[];
-    state.connected=state.aiProviders.some(p=>p.connected); renderAISelection();
+    for(const id of runChoices.keys())if(!aiInfo(id)?.connected)runChoices.delete(id);
+    state.connected=state.aiProviders.some(p=>p.connected); renderAISelection(preferredProvider);
   }
   function renderCategories() {
     $("question-categories").replaceChildren();
@@ -307,7 +345,7 @@
     finally { state.polling = false; }
   }
   async function refreshStatus(restore = false) {
-    const data = await api("/api/status"); state.csrf = data.csrf; state.connected = !!data.connected; state.model = data.model || "gpt-5-mini"; state.roles = Array.isArray(data.roles) && data.roles.length ? data.roles : DEFAULT_ROLES; state.runs = data.runs || [];
+    const data = await api("/api/status"); state.csrf = data.csrf; state.connected = !!data.connected; state.roles = Array.isArray(data.roles) && data.roles.length ? data.roles : DEFAULT_ROLES; state.runs = data.runs || [];
     renderConnection(); renderHistory(); renderRoles(state.run); window.HyperpassBrain?.refresh();
     if (restore) { const active = typeof data.active_run === "string" ? data.active_run : data.active_run?.id; if (active) await selectRun(active); else if (state.runs.length) await selectRun((state.runs.find(r => r.mode === "live") || state.runs[0]).id); }
   }
@@ -424,8 +462,16 @@
   for (const id of ["sources-button", "sources-inline"]) $(id).addEventListener("click", openSources);
   $("close-sources").addEventListener("click", () => $("sources-dialog").close());
   $("sources-dialog").addEventListener("close", () => { for (const input of $("source-cards").querySelectorAll('input[type="password"]')) input.value = ""; });
-  $("connection-form").addEventListener("submit", async event => { event.preventDefault(); const key = $("api-key").value.trim(), model = $("model").value.trim(); if (!key) { $("connect-error").textContent = "선택한 AI의 API 키를 입력해 주세요."; return; } $("connect-submit").disabled = true; $("connect-submit").textContent = "실제 API 연결 확인 중…"; $("connect-error").textContent = "";
-    try { await api("/api/connect", {method:"POST",body:{provider:$("connect-provider").value,api_key:key,model}}); $("api-key").value = ""; await refreshStatus(); await refreshAI(); $("connection-dialog").close(); $("form-feedback").textContent = "API 연결을 확인했습니다. 질문을 입력하고 리서치를 시작하세요."; }
+  $("connection-form").addEventListener("submit", async event => { event.preventDefault(); const key = $("api-key").value.trim(), model = $("model").value.trim(), provider=$("connect-provider").value;
+    if (!key) { $("connect-error").textContent = "선택한 AI의 API 키를 입력해 주세요."; return; }
+    if (!model) { $("connect-error").textContent = "모델 목록을 불러와 선택하거나 사용할 모델 ID를 입력해 주세요."; ($("model").hidden?$("connect-model-list"):$("model")).focus(); return; }
+    $("connect-submit").disabled = true; $("connect-submit").textContent = "실제 API 연결 확인 중…"; $("connect-error").textContent = "";
+    try {
+      await api("/api/connect", {method:"POST",body:{provider,api_key:key,model}});
+      runChoices.delete(provider);
+      $("api-key").value = ""; await refreshStatus(); await refreshAI(provider); $("connection-dialog").close();
+      $("form-feedback").textContent = `${AI_NAMES[provider]}의 ${model} 연결을 확인했습니다. 이번 질문에 이 모델을 사용합니다.`;
+    }
     catch(e) { $("connect-error").textContent = e.message; }
     finally { $("connect-submit").disabled = false; $("connect-submit").textContent = "연결 확인 후 시작"; }
   });
@@ -436,15 +482,45 @@
   const tabs = Array.from(document.querySelectorAll("[data-tab]")); for (const [index, tab] of tabs.entries()) { tab.addEventListener("click", () => selectTab(tab.dataset.tab)); tab.addEventListener("keydown", event => { let next; if (event.key === "ArrowRight") next = (index + 1) % tabs.length; else if (event.key === "ArrowLeft") next = (index + tabs.length - 1) % tabs.length; else if (event.key === "Home") next = 0; else if (event.key === "End") next = tabs.length - 1; if (next !== undefined) { event.preventDefault(); selectTab(tabs[next].dataset.tab); tabs[next].focus(); } }); }
   window.addEventListener("pagehide", () => { state.alive = false; clearTimeout(state.timer); });
   $("connect-provider").addEventListener("change",()=>{$("api-key").value="";$("connect-error").textContent="";renderConnectProvider(true);});
-  $("run-provider").addEventListener("change",()=>{$("run-model").value=defaultModel(aiInfo($("run-provider").value));modelList($("run-provider").value,"run-model-list");renderModelCapability();refreshReasoning();});
-  $("run-model").addEventListener("change",refreshReasoning);
+  $("run-provider").addEventListener("change", applyRunChoice);
+  function rememberRunModel() {
+    const id=$("run-provider").value;
+    if(id)runChoices.set(id,{model:$("run-model").value.trim(),reasoning:$("run-reasoning").value});
+  }
+  function changeRunModel() {
+    refreshReasoning("default");
+    rememberRunModel();
+  }
+  $("run-model").addEventListener("input",()=>{
+    ++reasoningRequest;
+    fillReasoning($("run-reasoning"),reasoningOptions($("run-provider").value,$("run-model").value.trim()));
+    rememberRunModel();
+  });
+  $("run-model").addEventListener("change",changeRunModel);
+  $("run-reasoning").addEventListener("change",()=>{++reasoningRequest;rememberRunModel();});
+  for(const [list,input] of [[ $("connect-model-list"),$("model") ],[ $("run-model-list"),$("run-model") ]]){
+    list.addEventListener("change",()=>{
+      input.hidden=list.value!==manualModel;
+      input.value=input.hidden?list.value:"";
+      if(!input.hidden)input.focus();
+      if(input.id==="run-model")changeRunModel();
+    });
+  }
   $("verified-model-preset").addEventListener("click",applyVerifiedPreset);
   $("refresh-models").addEventListener("click",async()=>{
     const id=$("connect-provider").value,key=$("api-key").value.trim();
     if(!key && !aiInfo(id)?.connected){$("connect-error").textContent="먼저 선택한 AI의 API 키를 입력해 주세요. 키는 모델 목록 조회에만 사용하며 아직 연결 등록하지 않습니다.";return;}
     $("refresh-models").disabled=true;$("connect-error").textContent="사용 가능한 모델 목록을 불러오는 중…";
-    try{const data=await api(`/api/ai/${id}/models`,{method:"POST",body:key?{api_key:key}:{}});let p=aiInfo(id);if(!p){p={id,name:AI_NAMES[id],connected:false};state.aiProviders.push(p);}p.models=data.models || [];modelList(id,"connect-model-list");if(p.models.length && (!$("model").value.trim() || !p.models.some(m=>modelId(m)===$("model").value.trim())))$("model").value=data.default_model || modelId(p.models[0]);$("connect-error").textContent=p.models.length?`${p.models.length}개 모델을 조회했습니다. 사용할 모델을 선택하고 연결 확인을 누르세요.`:"조회된 모델이 없습니다. 서비스의 모델 권한을 확인해 주세요.";renderAISelection();}
-    catch(e){$("connect-error").textContent=e.message;}finally{$("refresh-models").disabled=false;}
+    try{
+      const data=await api(`/api/ai/${id}/models`,{method:"POST",body:key?{api_key:key}:{}});
+      if($("connect-provider").value!==id || $("api-key").value.trim()!==key)return;
+      let p=aiInfo(id);if(!p){p={id,name:AI_NAMES[id],connected:false};state.aiProviders.push(p);}
+      p.models=data.models || [];
+      modelList(id,"connect-model-list");
+      $("connect-error").textContent=p.models.length?`${p.models.length}개 모델을 조회했습니다. 사용할 모델을 선택하세요.`:"조회된 모델이 없습니다. 모델 ID를 직접 입력할 수 있습니다.";
+      if(p.models.length)$("connect-model-list").focus();
+    }
+    catch(e){if($("connect-provider").value===id && $("api-key").value.trim()===key)$("connect-error").textContent=e.message;}finally{$("refresh-models").disabled=false;}
   });
   $("category-example").addEventListener("click",()=>{$("question").value=CATEGORIES[state.category].example;$("question").focus();});
   renderCategories(); renderRoles(); renderArtifacts([]); renderEvents([]);

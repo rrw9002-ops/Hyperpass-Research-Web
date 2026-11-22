@@ -13,7 +13,7 @@ from hyperpass.server import Application, Store, serve, evidence_excerpt
 class ServerTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
-        self.app=Application(self.temp.name)
+        self.app=Application(self.temp.name, team_dir=Path(self.temp.name)/'team')
         self.server=serve(self.app,0)
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True)
         self.thread.start()
@@ -53,6 +53,7 @@ class ServerTests(unittest.TestCase):
     def test_key_never_returned_or_saved(self):
         secret='sk-test-super-private-sentinel'
         with patch('hyperpass.server.OpenAIProvider') as cls:
+            cls.return_value.model='gpt-5-mini'
             cls.return_value.check.return_value={'ok':True}
             status,result=self.call('/api/connect',{'api_key':secret,'model':'gpt-5-mini'})
             self.assertEqual(status,200)
@@ -67,7 +68,8 @@ class ServerTests(unittest.TestCase):
         from hyperpass.engine import ProviderError
         with patch('hyperpass.server.OpenAIProvider') as cls:
             cls.return_value.check.side_effect=ProviderError('인증 실패')
-            self.assertEqual(self.call('/api/connect',{'api_key':'sk-test-invalid-key'})[0],400)
+            self.assertEqual(self.call('/api/connect',{'api_key':'sk-test-invalid-key','model':'gpt-5-mini'})[0],400)
+            cls.return_value.check.assert_called_once()
         self.assertFalse(self.app.status()['connected'])
 
     def test_demo_is_explicit_persists_and_exports(self):
@@ -125,7 +127,7 @@ class ServerTests(unittest.TestCase):
             release.wait(3)
         with patch('hyperpass.server.OpenAIProvider') as cls:
             cls.return_value.check.side_effect=slow_check
-            worker=threading.Thread(target=lambda:self.call('/api/connect',{'api_key':'sk-test-private-key'}))
+            worker=threading.Thread(target=lambda:self.call('/api/connect',{'api_key':'sk-test-private-key','model':'gpt-5.4'}))
             worker.start()
             self.assertTrue(entered.wait(2))
             started=time.monotonic()
@@ -215,6 +217,8 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(lookup.call_args[0],('openai',key))
         self.assertEqual(data['models'][0]['id'],'gpt-5-mini')
         self.assertFalse(self.app.status()['connected'])
+        self.assertEqual(self.app.status()['model'],'')
+        self.assertTrue(all(row['model']=='' for row in self.call('/api/ai')[1]['providers']))
         self.assertNotIn(key,json.dumps(self.call('/api/ai')))
         for file in Path(self.temp.name).rglob('*'):
             if file.is_file(): self.assertNotIn(key.encode(),file.read_bytes())
@@ -227,9 +231,44 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(self.call('/api/connect',{'provider':'anthropic','api_key':'sk-key-test-anthropic','model':'claude-sonnet-4-6'})[0],200)
         connected={x['id']:x['connected'] for x in self.call('/api/ai')[1]['providers']}
         self.assertEqual(connected,{'openai':True,'anthropic':True,'gemini':False})
+        self.assertEqual(self.call('/api/status')[1]['model'],'')
+        self.assertEqual(self.call('/api/runs',{'question':'두 서비스 중 이번 모델 선택'})[0],400)
         self.assertEqual(self.call('/api/disconnect',{'provider':'anthropic'})[0],200)
         self.assertTrue(self.app.status()['connected'])
+        self.assertEqual(self.app.status()['model'],'gpt-5-mini')
+        self.assertEqual(self.call('/api/disconnect',{'provider':'openai'})[0],200)
+        self.assertEqual(self.app.status()['model'],'')
         self.assertEqual(self.call('/api/connect',{'provider':'untrusted','api_key':'sk-key-test-unknown'})[0],400)
+
+    def test_connection_requires_explicit_model_before_any_external_call(self):
+        with patch('hyperpass.server.OpenAIProvider') as openai, patch('hyperpass.server.make_provider') as factory, patch('hyperpass.server.list_models') as discover:
+            for vendor in ('openai','anthropic','gemini'):
+                for model in ({}, {'model':'   '}):
+                    with self.subTest(vendor=vendor, model=model):
+                        code, data = self.call('/api/connect',{'api_key':'fixture-private-key','provider':vendor,**model})
+                        self.assertEqual(code,400)
+                        self.assertIn('모델',data['error'])
+            openai.assert_not_called()
+            factory.assert_not_called()
+            discover.assert_not_called()
+        self.assertFalse(self.app.status()['connected'])
+
+    def test_legacy_single_provider_run_uses_connected_model(self):
+        from hyperpass.provider import OpenAIProvider
+        with patch.object(OpenAIProvider, 'check', return_value={'ok':True}):
+            code, result = self.call('/api/connect',{'api_key':'fixture-private-key','model':'gpt-5.4'})
+        self.assertEqual(code,200,result)
+        self.assertEqual(self.app.status()['model'],'gpt-5.4')
+        dispatched = threading.Event()
+        with patch.object(self.app, '_run', side_effect=lambda *args: dispatched.set()) as worker:
+            self.assertEqual(self.call('/api/runs',{'question':'분석','model_config':{}})[0],400)
+            code, result = self.call('/api/runs',{'question':'분석'})
+            self.assertEqual(code,202,result)
+            self.assertTrue(dispatched.wait(5))
+            run = self.app.store.get(result['id'])
+            self.assertEqual(run['model_config']['default'],{'provider':'openai','model':'gpt-5.4','reasoning':'default'})
+            self.assertEqual(worker.call_args.args[1].describe('head-manager'),run['model_config']['default'])
+        self.app.active = None
 
     def test_missing_evidence_rejected_before_model_call(self):
         self.app.provider=object()
@@ -240,10 +279,12 @@ class ServerTests(unittest.TestCase):
 
     def test_category_and_progress_persisted_and_blocked_export_label(self):
         result=self.app.start({'question':'sample','mode':'demo','category':'stock','brief':{'target':'AAPL','market':'US','horizon':'1년','outcome':'사업 전망'}})
-        for _ in range(100):
-            if not self.app.active: break
-            time.sleep(.02)
+        deadline = time.monotonic() + 30
+        while self.app.active and time.monotonic() < deadline:
+            time.sleep(.05)
+        self.assertIsNone(self.app.active, 'Demo did not finish within 30 seconds')
         run=self.app.store.get(result['id'])
+        self.assertEqual(run['status'],'completed')
         self.assertEqual(run['category'],'stock')
         self.assertEqual(run['progress']['percent'],100)
         self.assertTrue(run['report_complete'])

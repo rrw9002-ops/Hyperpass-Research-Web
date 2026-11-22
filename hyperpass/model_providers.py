@@ -34,7 +34,8 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 def validate_model_name(provider, model):
     if not isinstance(provider,str) or provider not in PROVIDER_NAMES:
         raise ProviderError('지원하지 않는 AI 제공자입니다.')
-    if not isinstance(model,str): raise ProviderError('모델 이름을 입력하세요.')
+    if not isinstance(model,str) or not model.strip():
+        raise ProviderError('사용할 모델을 목록에서 선택하거나 모델 ID를 입력하세요.')
     model=model.strip()
     if provider=='gemini' and model.startswith('models/'): model=model[7:]
     pattern=r'[A-Za-z0-9._:-]{1,120}' if provider=='openai' else r'[A-Za-z0-9._-]{1,120}'

@@ -168,10 +168,14 @@ def exercise(client, installation, record):
     status = client.request('/api/status')
     client.csrf = status['csrf']
     require(status['connected'] is False, 'Fresh install must not have an AI key')
+    require(not status.get('model'), 'Fresh install unexpectedly selected a research model')
+    providers = client.request('/api/ai')['providers']
+    require(providers and all(not provider.get('model') for provider in providers),
+            'An unconnected AI service reported a selected model')
     require('Hyperpass' in client.request('/'), 'Main page failed to load')
     for asset in ('app.js', 'brain.js', 'chart.js', 'team.js', 'tradingview.js', 'symbol-search.js', 'indicator-lab.js', 'workspaces.css'):
         require(bool(client.request('/' + asset)), 'Missing UI asset: ' + asset)
-    record('startup_and_assets', 'Fresh localhost app and all workspace assets loaded; no API key configured.')
+    record('startup_and_assets', 'Fresh localhost app loaded all workspace assets with no configured key or selected model.')
 
     indicator_code = '//@version=6\nindicator("Smoke average", overlay=true)\nplot(ta.sma(close, 20))'
     saved_indicator = client.request('/api/indicators', {'name': '내 이동평균', 'code': indicator_code}, expected=201)
@@ -257,7 +261,7 @@ def main():
     source.add_argument('--archive', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
-    summary = {'version': '0.5.0-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
+    summary = {'version': '0.5.1-preview', 'platform': platform.platform(), 'architecture': platform.machine(),
                'python': platform.python_version(), 'kind': 'source' if args.source else 'executable' if args.executable else 'archive',
                'started_at': datetime.now(timezone.utc).isoformat(), 'status': 'running', 'checks': [],
                'not_tested': ['Paid OpenAI/Claude/Gemini model responses', 'External market-data APIs',

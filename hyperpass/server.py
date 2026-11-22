@@ -19,7 +19,7 @@ from urllib.parse import urlsplit, parse_qs
 
 from .engine import Engine, OpenAIProvider, DemoProvider, ProviderError, SPECIALIST_ROLES
 from .data_sources import DataSources, DataSourceError
-from .model_providers import make_provider, list_models, RoutedProvider, reasoning_options
+from .model_providers import make_provider, list_models, RoutedProvider, reasoning_options, validate_model_name
 
 AI_NAMES={'openai':'OpenAI · GPT','anthropic':'Anthropic · Claude','gemini':'Google · Gemini'}
 
@@ -163,7 +163,6 @@ class Application:
         self.provider = None
         self.ai_providers = {}
         self.ai_models = {}
-        self.model = 'gpt-5-mini'
         self.csrf = secrets.token_urlsafe(32)
         self.active = None
         self.stop_event = threading.Event()
@@ -174,7 +173,7 @@ class Application:
     def ai_catalog(self):
         with self.lock:
             return [{'id':name,'name':label,'connected':name in self.ai_providers,
-                     'model':getattr(self.ai_providers.get(name),'model','gpt-5-mini' if name=='openai' else ''),
+                     'model':getattr(self.ai_providers.get(name),'model',''),
                      'models':self.ai_models.get(name,[]),
                      'capabilities':{'web_search':'모델의 검색 지원·계정 권한에 따라 달라집니다.',
                                      'reasoning':'선택한 모델이 지원하는 강도만 설정합니다.'}}
@@ -189,7 +188,7 @@ class Application:
             registry = dict(self.ai_providers)
             if vendor not in registry:
                 raise ValueError('선택한 AI의 API 키를 먼저 연결하세요.')
-            config = {'provider': vendor, 'model': payload.get('model') or registry[vendor].model,
+            config = {'provider': vendor, 'model': payload.get('model', registry[vendor].model),
                       'reasoning': payload.get('reasoning', 'default')}
             provider = RoutedProvider({'default': config, 'roles': {}}, registry)
         if not self.indicator_generation.acquire(blocking=False):
@@ -230,7 +229,8 @@ class Application:
 
     def status(self):
         with self.lock:
-            return {'connected':bool(self.ai_providers) or self.provider is not None,'model':self.model,'csrf':self.csrf,
+            model = getattr(self.provider, 'model', '') if len(self.ai_providers) <= 1 else ''
+            return {'connected':bool(self.ai_providers) or self.provider is not None,'model':model,'csrf':self.csrf,
                 'active_run':self.active, 'roles':[dict(id=r[0],name=r[1],description=r[2]) for r in ROLES],
                 'runs':[{k:r.get(k) for k in ('id','question','status','created_at','mode','report_complete','progress')} for r in self.store.list_full()]}
 
@@ -358,10 +358,14 @@ class Application:
             model_config=payload.get('model_config')
             if mode=='demo': provider=DemoProvider()
             elif model_config is not None or self.ai_providers:
-                default_vendor=next(iter(self.ai_providers),'openai')
                 registry=dict(self.ai_providers)
                 if not registry and self.provider: registry['openai']=self.provider
-                model_config=model_config or {'default':{'provider':default_vendor,'model':getattr(registry[default_vendor],'model',self.model),'reasoning':'default'},'roles':{}}
+                if model_config is None:
+                    if len(registry) != 1:
+                        raise ValueError('이번 분석에 사용할 AI와 모델을 선택하세요.')
+                    vendor, connected = next(iter(registry.items()))
+                    model_config = {'default': {'provider': vendor, 'model': connected.model,
+                                                'reasoning': 'default'}, 'roles': {}}
                 provider=RoutedProvider(model_config,registry)
             else: provider=self.provider
             team_snapshot=self.team.snapshot()
@@ -597,28 +601,26 @@ class Handler(BaseHTTPRequestHandler):
                     key=payload.get('api_key','')
                     vendor=payload.get('provider','openai')
                     if vendor not in AI_NAMES: raise ValueError('지원하지 않는 AI 제공사입니다.')
-                    model=payload.get('model') or ('gpt-5-mini' if vendor=='openai' else '')
                     if not isinstance(key,str) or not 10<=len(key.strip())<=1024: raise ValueError('API 키를 확인해 주세요.')
-                    if not model:
-                        models=self.app.model_list(vendor,key.strip())
-                        preferred='sonnet' if vendor=='anthropic' else 'flash'
-                        model=next((m['id'] for m in models if preferred in m['id']),models[0]['id'] if models else '')
+                    model=validate_model_name(vendor,payload.get('model'))
                     if vendor=='openai': provider=OpenAIProvider(key.strip(),model)
                     else: provider=make_provider(vendor,key.strip(),model)
                     provider.check()
-                    self.app.ai_providers[vendor]=provider
-                    if not any(m['id']==model for m in self.app.ai_models.get(vendor,[])):
-                        self.app.ai_models.setdefault(vendor,[]).append({'id':model,'name':model,'reasoning_options':reasoning_options(vendor,model)})
-                    self.app.provider=provider
-                    self.app.model=model
+                    with self.app.lock:
+                        self.app.ai_providers[vendor]=provider
+                        if not any(m['id']==model for m in self.app.ai_models.get(vendor,[])):
+                            self.app.ai_models.setdefault(vendor,[]).append({'id':model,'name':model,'reasoning_options':reasoning_options(vendor,model)})
+                        self.app.provider=provider
                 return self.send(200,{'connected':True,'provider':vendor,'model':model})
             if path=='/api/disconnect':
                 with self.app.connection_change():
                     if self.app.active: raise ValueError('분석을 중단한 뒤 연결을 해제해 주세요.')
                     vendor=payload.get('provider','openai')
                     if vendor not in AI_NAMES: raise ValueError('지원하지 않는 AI 제공사입니다.')
-                    self.app.ai_providers.pop(vendor,None)
-                    self.app.provider=next(iter(self.app.ai_providers.values()),None)
+                    with self.app.lock:
+                        self.app.ai_providers.pop(vendor,None)
+                        self.app.ai_models.pop(vendor,None)
+                        self.app.provider=next(iter(self.app.ai_providers.values()),None)
                 return self.send(200,{'connected':False,'provider':vendor})
             if path=='/api/runs': return self.send(202,self.app.start(payload))
             match=re.fullmatch(r'/api/runs/([a-f0-9]{32})/cancel',path)

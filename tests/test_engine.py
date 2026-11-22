@@ -748,7 +748,7 @@ class ProviderTests(unittest.TestCase):
                 body=json.dumps({'error':{'code':code,'message':'sk-private-secret'}}).encode()
                 failure=urllib.error.HTTPError('https://api.openai.com/v1/responses',429,'error',{},io.BytesIO(body))
                 with patch('hyperpass.provider._open',side_effect=failure):
-                    with self.assertRaises(ProviderError) as caught: OpenAIProvider('sk-test').check()
+                    with self.assertRaises(ProviderError) as caught: OpenAIProvider('sk-test', "gpt-5-mini").check()
                 self.assertIn(expected,str(caught.exception))
                 self.assertNotIn('sk-private-secret',str(caught.exception))
                 self.assertTrue(failure.closed)
@@ -757,14 +757,14 @@ class ProviderTests(unittest.TestCase):
         for body in (b'not json',b'{"error":[]}',b'{"error":{"code":"sk-secret"}}'):
             failure=urllib.error.HTTPError('https://api.openai.com/v1/responses',429,'error',{},io.BytesIO(body))
             with patch('hyperpass.provider._open',side_effect=failure):
-                with self.assertRaises(ProviderError) as caught: OpenAIProvider('sk-test').check()
+                with self.assertRaises(ProviderError) as caught: OpenAIProvider('sk-test', "gpt-5-mini").check()
             self.assertIn('단정할 수 없습니다',str(caught.exception))
             self.assertNotIn('sk-secret',str(caught.exception))
 
     def test_connection_check_uses_small_output_reservation(self):
         body={'status':'completed','output':[{'type':'message','content':[{'type':'output_text','text':'OK'}]}]}
         with patch('hyperpass.provider._open',return_value=io.BytesIO(json.dumps(body).encode())) as call:
-            self.assertTrue(OpenAIProvider('sk-test').check()['ok'])
+            self.assertTrue(OpenAIProvider('sk-test', "gpt-5-mini").check()['ok'])
         self.assertEqual(json.loads(call.call_args[0][0].data)['max_output_tokens'],1024)
 
     def test_http_failure_does_not_expose_key_or_response_body(self):
@@ -772,7 +772,7 @@ class ProviderTests(unittest.TestCase):
         failure = urllib.error.HTTPError("https://api.openai.com/v1/responses", 401, key, {}, io.BytesIO(key.encode()))
         with patch("hyperpass.provider._open", side_effect=failure):
             with self.assertRaises(ProviderError) as caught:
-                OpenAIProvider(key).check()
+                OpenAIProvider(key, "gpt-5-mini").check()
         self.assertNotIn(key, str(caught.exception))
         self.assertIn("인증", str(caught.exception))
         self.assertTrue(failure.closed)
@@ -783,7 +783,7 @@ class ProviderTests(unittest.TestCase):
                                                             "annotations": [{"type": "url_citation", "url": "https://example.org/source", "title": "source"}]}]}]}
         response = io.BytesIO(json.dumps(body).encode())
         with patch("hyperpass.provider._open", return_value=response) as call:
-            result = OpenAIProvider("sk-test").complete("instructions", {"question": "test"}, schema={"type": "object"}, web_search=True)
+            result = OpenAIProvider("sk-test", "gpt-5-mini").complete("instructions", {"question": "test"}, schema={"type": "object"}, web_search=True)
         request = call.call_args[0][0]
         sent = json.loads(request.data)
         self.assertEqual(request.full_url, "https://api.openai.com/v1/responses")
@@ -796,7 +796,7 @@ class ProviderTests(unittest.TestCase):
     def test_incomplete_response_is_not_success(self):
         with patch("hyperpass.provider._open", return_value=io.BytesIO(b'{"status":"incomplete"}')):
             with self.assertRaises(ProviderError):
-                OpenAIProvider("sk-test").check()
+                OpenAIProvider("sk-test", "gpt-5-mini").check()
 
     def test_redirect_does_not_forward_authorization(self):
         received = []

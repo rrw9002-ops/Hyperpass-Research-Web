@@ -24,7 +24,7 @@ class OpenAIProvider:
     mode = "live"
     endpoint = "https://api.openai.com/v1/responses"
 
-    def __init__(self, api_key: str, model: str = "gpt-5-mini", reasoning: str = "default"):
+    def __init__(self, api_key: str, model: str, reasoning: str = "default"):
         if not isinstance(api_key, str) or not api_key.strip() or len(api_key) > 1000:
             raise ProviderError("OpenAI API 키를 입력해 주세요.")
         if not isinstance(model, str) or not model.strip() or len(model) > 120:
