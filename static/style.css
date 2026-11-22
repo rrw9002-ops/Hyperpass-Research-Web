@@ -196,10 +196,10 @@ select option, select optgroup { background: var(--panel); color: var(--text); }
   .topbar .brand { gap: 6px; }
   .topbar .brand small { letter-spacing: 1px; }
   .topbar-actions .connection { padding-inline: 6px; gap: 5px; }
-  .workspace-nav { padding: 3px; gap: 1px; }
+  .workspace-nav { padding: 3px 2px; gap: 0; }
   .workspace-nav button {
     flex: 1 1 auto;
-    padding: 8px 3px;
+    padding: 8px 2px;
     font-size: var(--text-label);
   }
 }
