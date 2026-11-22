@@ -1,0 +1,214 @@
+{
+  "repository": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent",
+  "commit": "a15871c922870f9803f819d9b994888ec81eabc1",
+  "upstream_version": "2.1.3",
+  "edition": "research-only",
+  "files": [
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/fundamental-analyst.toml",
+      "snapshot": "provenance/upstream/fundamental-analyst.txt",
+      "sha256": "36ad7a9a152b872e2556b645d1df53d16ab5da2ad9d668e60b35ac8cef529e8a",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/fundamental-analyst.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/fundamental-analyst/tcx-fundamental/SKILL.md",
+      "snapshot": "provenance/upstream/method-fundamental-analyst.txt",
+      "sha256": "f8885ea94f507d2ce9f09a001998e2216ba36e4bc46112335d555d0f208a31a7",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/fundamental-analyst/tcx-fundamental/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/fundamental-analyst.md",
+      "adapted_sha256": "1c45bb7793f61feeea58f2024ad43664be832a4c93c2ab5967d3335c5e0c8370"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/technical-analyst.toml",
+      "snapshot": "provenance/upstream/technical-analyst.txt",
+      "sha256": "7bd13160ea7dad861c0b08dd3182fd6630560e4475c3a5f6a52f9107337279b1",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/technical-analyst.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/technical-analyst/tcx-technical/SKILL.md",
+      "snapshot": "provenance/upstream/method-technical-analyst.txt",
+      "sha256": "42b9cc81af5366bf1c26e50d6abe00018388dcab45a7efb5c3305cae4a1c1cf7",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/technical-analyst/tcx-technical/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/technical-analyst.md",
+      "adapted_sha256": "11e3cc3438ac006ca102a738d375b0130c90eade323170025d58065d3f83cbb1"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/news-analyst.toml",
+      "snapshot": "provenance/upstream/news-analyst.txt",
+      "sha256": "ce84e78e806a6b992f28cc4a1ca69058fe021eba936287325bfd6d856a09d073",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/news-analyst.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/news-analyst/tcx-news/SKILL.md",
+      "snapshot": "provenance/upstream/method-news-analyst.txt",
+      "sha256": "a52b5e243b3e70b9b7803be04be1d447faee9981eb07fddb5887a90e8f6ae795",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/news-analyst/tcx-news/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/news-analyst.md",
+      "adapted_sha256": "022b89d9a215028e5f89421bf070b9070d83bc93edab0dd68784463e01eb704f"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/macro-analyst.toml",
+      "snapshot": "provenance/upstream/macro-analyst.txt",
+      "sha256": "c0185206f8abb0d06587716b9413bc88d22422e79465af5bd4984cef5da42017",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/macro-analyst.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/macro-analyst/tcx-macro/SKILL.md",
+      "snapshot": "provenance/upstream/method-macro-analyst.txt",
+      "sha256": "2adc31db199c795fc0db90ab823c44690f2ecc6a66f00c7626cbe9afb1ece650",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/macro-analyst/tcx-macro/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/macro-analyst.md",
+      "adapted_sha256": "ea2e90cca164e3092101774d15bce5cc7a3aa627ebb67e55e5f4dcbb074512ee"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/instrument-analyst.toml",
+      "snapshot": "provenance/upstream/instrument-analyst.txt",
+      "sha256": "4a2ee958b6e5529f84f7ae1b612a1d2e44f6fdf0b7482792ad2c19c56a6c05c5",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/instrument-analyst.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/instrument-analyst/tcx-instrument/SKILL.md",
+      "snapshot": "provenance/upstream/method-instrument-analyst.txt",
+      "sha256": "b164ba1d07830cb7934b776582032583367eef1b747d9bc7565964bb4b2627ec",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/instrument-analyst/tcx-instrument/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/instrument-analyst.md",
+      "adapted_sha256": "fb1cfcb09be307fbe3de01f81acb11de6069a3cc601da50d08652e30559c0f36"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/valuation-analyst.toml",
+      "snapshot": "provenance/upstream/valuation-analyst.txt",
+      "sha256": "fa0aa67cf97760f9db83f8ccddfcf11c568f60b0e40053cff4ed734ea4ba0039",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/valuation-analyst.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/valuation-analyst/tcx-valuation/SKILL.md",
+      "snapshot": "provenance/upstream/method-valuation-analyst.txt",
+      "sha256": "927744d0d8c03f3582725f3f4a4e976ed86b6e77ae4afa882a9a19c881f5625f",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/valuation-analyst/tcx-valuation/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/valuation-analyst.md",
+      "adapted_sha256": "8d6b65fd536f94a2d9654251190b3d7b1f1d656df0e8f7dcfadd17e2165fa385"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/portfolio-manager.toml",
+      "snapshot": "provenance/upstream/portfolio-manager.txt",
+      "sha256": "802175f712ebc280c651ecc8e858503500c01171aa8bdb868f5205c1e5755ccb",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/portfolio-manager.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/portfolio-manager/tcx-portfolio/SKILL.md",
+      "snapshot": "provenance/upstream/method-portfolio-manager.txt",
+      "sha256": "51d1b99685755918978c7e2cd0bc6ff5c960dbbcbd1e2e76cdaaed4540e957c4",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/portfolio-manager/tcx-portfolio/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/portfolio-manager.md",
+      "adapted_sha256": "aa62575148f15b542c224d4c6a2a59bf3d206281a9d7b132e86ea3006a90ae72"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/risk-manager.toml",
+      "snapshot": "provenance/upstream/risk-manager.txt",
+      "sha256": "212b45fe8142433f47fb3d43b7f0478515bbe89016a4eec848c5c96bf138ef81",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/risk-manager.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/risk-manager/tcx-risk/SKILL.md",
+      "snapshot": "provenance/upstream/method-risk-manager.txt",
+      "sha256": "b4075b332f03cb3beae89eb6850681818b01f72e8abad1d8ceef1d7c9ddc9709",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/risk-manager/tcx-risk/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/risk-manager.md",
+      "adapted_sha256": "d848d2a91c5abcc551a02cb53bc3a0c1ee93ac76e0e5bb5be5096360649d3255"
+    },
+    {
+      "source": "workspace_templates/modules/fixed-subagents/files/.codex/agents/judgment-reviewer.toml",
+      "snapshot": "provenance/upstream/judgment-reviewer.txt",
+      "sha256": "cb94727a8ec9a296764a7d7d496ee40428680699b0a763c4bd815e88e0b86e89",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/fixed-subagents/files/.codex/agents/judgment-reviewer.toml"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/judgment-reviewer/tcx-judgment/SKILL.md",
+      "snapshot": "provenance/upstream/method-judgment-reviewer.txt",
+      "sha256": "759b911bed68c977776c16589c1139684db63df5d5d059e8885ace8ea692f248",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/judgment-reviewer/tcx-judgment/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/methods/judgment-reviewer.md",
+      "adapted_sha256": "4600279ca03d95a1ce0773e84a475792dc9599b33683b1a7019def4b92313311"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-data-qc/SKILL.md",
+      "snapshot": "provenance/upstream/shared-data-qc.txt",
+      "sha256": "c96f0c3b341a4bfaab62dcdc13a8e2daa3cfc8ab1107b9e7b3eb7f479fb541c8",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-data-qc/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/data-qc.md",
+      "adapted_sha256": "48ae54bfffcfdefbfeedec861b20f204df7df77244fb99547361c07eba856138"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-scenarios/SKILL.md",
+      "snapshot": "provenance/upstream/shared-scenarios.txt",
+      "sha256": "7eda6fbffab32729920a3ee75ef9df3bfe7af75fc3adb55818ec1975f068e1d1",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-scenarios/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/scenarios.md",
+      "adapted_sha256": "beef5961960d16d0d52b68a72fc8b905fc64278ecc458eaf06d176f858d288fe"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-forecast/SKILL.md",
+      "snapshot": "provenance/upstream/shared-forecast.txt",
+      "sha256": "e58f6fa9426cbb50486f02dd6caaf424e31ca3c8cac137329d0248ac4383feba",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-forecast/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/forecast.md",
+      "adapted_sha256": "bfea704d43cc93f569ebb5ee9251d4043f019a62a4937e2dbfae477507f233a8"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-anti-overfit/SKILL.md",
+      "snapshot": "provenance/upstream/shared-anti-overfit.txt",
+      "sha256": "b045b6fbd620d2bb4d9e2d0b23cd6c6b8a7c16c2830664c84d58fe6eb59a51ce",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-anti-overfit/SKILL.md",
+      "adapted": ".agents/skills/hyperpass-team/references/anti-overfit.md",
+      "adapted_sha256": "b80cd7163c73ed80bb4378f196d0105a3bd70d3be1dd1a73afab185ebb8096f8"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/playbooks/research-framing.md",
+      "snapshot": "provenance/upstream/research-framing.txt",
+      "sha256": "0eec170ac0626417a5cf3d875c5cbe4e23045483dd4f7189c8dfb8fb4e1b0e1c",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/playbooks/research-framing.md"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/SKILL.md",
+      "snapshot": "provenance/upstream/workflow.txt",
+      "sha256": "d55704ebb57ee87859ebe2fea72df401c210b263a4a4853cb0a79d1c0ea0fb28",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/SKILL.md"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/playbooks/context-overlays.md",
+      "snapshot": "provenance/upstream/context-overlays.txt",
+      "sha256": "3c577d6a54ec1a2bcfbea07ac624e09664ce2fc29acd3189bdc11647a05cfb2e",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/playbooks/context-overlays.md"
+    },
+    {
+      "source": "workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-source-gate/SKILL.md",
+      "snapshot": "provenance/upstream/source-gate.txt",
+      "sha256": "87599ed5e6a7a5c693c9ddcbf204f4b52d030745775d986fcff01b8cc68c6d2f",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/repo-skills/files/.tradingcodex/subagents/skills/shared/tcx-source-gate/SKILL.md"
+    },
+    {
+      "source": "workspace_templates/modules/codex-base/files/.codex/prompts/base_instructions/head-manager.md",
+      "snapshot": "provenance/upstream/head-manager.txt",
+      "sha256": "0fc2d1ea0c83b8e65ac360a9ea468bafede7e8c1231ae0a59f400ba41dca089d",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/codex-base/files/.codex/prompts/base_instructions/head-manager.md"
+    },
+    {
+      "source": "workspace_templates/modules/codex-base/files/.codex/prompts/base_instructions/fixed-role.md",
+      "snapshot": "provenance/upstream/fixed-role.txt",
+      "sha256": "5036f02c519376873084ca07673ab386e28ce95ef9fbbe2a85354e65e6123358",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/workspace_templates/modules/codex-base/files/.codex/prompts/base_instructions/fixed-role.md"
+    },
+    {
+      "source": "NOTICE",
+      "snapshot": "provenance/upstream/NOTICE.txt",
+      "sha256": "8518c3def8888c1facd1b07bc5629b8bfa071126a106afa0a63d1b5bc7b4b77d",
+      "source_url": "https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent/blob/a15871c922870f9803f819d9b994888ec81eabc1/NOTICE"
+    }
+  ],
+  "adaptations": [
+    "File-native research replaces service persistence; no authentication-equivalence claim.",
+    "No broker/account/order/approval operations in this edition.",
+    "Current supported native custom-agent schema; parent model/permissions/MCP inherited.",
+    "Role-specific analytic method text preserved except explicit transport/storage wording."
+  ]
+}

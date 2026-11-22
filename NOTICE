@@ -1,0 +1,14 @@
+Hyperpass Research Web
+Copyright 2026 Hyperpass Research Web contributors.
+
+Includes research methods adapted from TradingCodex 2.1.3:
+https://github.com/moneybuilderjay-cmyk/Hyperpass-Tradingagent
+Pinned source commit: a15871c922870f9803f819d9b994888ec81eabc1
+Copyright 2026 TradingCodex Authors. Apache License 2.0; see LICENSE.
+
+Changes: independent local web application; server-side OpenAI orchestration;
+local research records; no Codex installation, service principals, broker orders,
+account access, original signed ledger or original execution-security guarantees.
+The nine specialist research methods retain their research-edition source text.
+Runtime adaptation is explicit in the engine. Upstream snapshots are attribution
+and comparison material, not executable instructions or a service installation.
