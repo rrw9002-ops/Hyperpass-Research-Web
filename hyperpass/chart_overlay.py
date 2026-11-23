@@ -7,6 +7,8 @@ import json
 import re
 
 ENGINE = "hyperpass-local-overlay/1"
+# Digest of the executable, default-parameter template in static/local-indicators.js.
+# Only its three declared inputs may differ when archiving a pivot drawing.
 PIVOT_TEMPLATE_SHA = "80ea903c21b58351f835d03be249219da201dec0a18d422e6900aeb15f87826b"
 COLORS = dict(zip("orange yellow red green lime teal aqua blue navy purple fuchsia maroon olive silver gray black white".split(),
                   "#ff9800 #fdd835 #f23645 #4caf50 #00e676 #00897b #00bcd4 #2962ff #311b92 #9c27b0 #e040fb #880e4f #808000 #b2b5be #787b86 #363a45 #ffffff".split()))
@@ -207,6 +209,7 @@ def overlay_snapshot(chart, request):
         raise ValueError("화면 지표와 저장할 코드의 계산 조건이 다릅니다. 지표 코드를 확인한 뒤 현재 차트에 다시 적용하세요.")
     as_of = chart.get("observation_time") or chart["created_at"]
     observed = datetime.fromisoformat(as_of).timestamp()
+    # Match the local renderer's conservative close guard for a provider without barstate.isconfirmed.
     duration = (int(timeframe)*60 if str(timeframe).isdigit() else
                 {"d": 90000, "1d": 90000, "w": 691200, "1wk": 691200, "1w": 691200,
                  "m": 2764800, "1m": 2764800, "1mo": 2764800}.get(str(timeframe).lower(), float("inf")))
