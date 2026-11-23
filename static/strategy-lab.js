@@ -79,7 +79,7 @@
             <div id="bt-custom-field" hidden><label class="field-label" for="bt-symbols">검증할 종목</label>
               <textarea id="bt-symbols" rows="3" placeholder="삼성전자, SK하이닉스, 현대차"></textarea>
               <p class="cost-note">종목명이나 티커를 쉼표 또는 줄바꿈으로 구분하세요.</p></div>
-            <p id="bt-universe" class="cost-note"></p>
+            <p id="bt-universe" class="cost-note"></p><div id="bt-selection-note"></div>
             <div id="bt-universe-options"></div></section>
     <div id="studio-local" class="studio-grid">
       <form id="bt-form" class="portfolio-form">
@@ -121,10 +121,11 @@
       <div class="studio-output">
         <section class="panel studio-result"><div class="studio-result-head"><h2 id="bt-result-title">검증 결과</h2>
           <span id="bt-status" class="workspace-state">실행 전</span></div>
-          <p id="bt-job-message" role="status" class="studio-summary">실행하면 비용 차감 수익률, 최대 낙폭과 실제 가상 거래 내역을 확인할 수 있습니다.</p>
+          <div id="bt-job-selection"></div><p id="bt-job-message" role="status" class="studio-summary">실행하면 비용 차감 수익률, 최대 낙폭과 실제 가상 거래 내역을 확인할 수 있습니다.</p>
           <progress id="bt-progress" max="100" value="0" hidden></progress>
           <div class="studio-actions"><button type="button" class="button ghost compact" id="bt-cancel" hidden>실행 취소</button>
-            <button type="button" class="button ghost compact" id="bt-retry" hidden>상태 다시 확인</button></div>
+            <button type="button" class="button ghost compact" id="bt-retry" hidden>상태 다시 확인</button>
+            <button type="button" class="button ghost compact" id="bt-reopen" hidden>이 실행 조건 다시 열기</button></div>
           <div id="bt-result" hidden><div class="studio-metrics" id="bt-metrics"></div>
             <div id="bt-curves" class="studio-curves"><div><h3>누적 자산</h3><canvas id="bt-equity-plot" aria-label="시간순 누적 자산"></canvas></div>
               <div><h3>고점 대비 낙폭</h3><canvas id="bt-dd-plot" aria-label="시간순 고점 대비 낙폭"></canvas></div></div>
@@ -235,7 +236,7 @@
     $("bt-universe").textContent = engine==="pine" ?
       (mode==="market"?"선택한 시장·업종의 현재 상장 종목을 TradingView에서 차례대로 검증합니다. 전체 시장 실행은 오래 걸릴 수 있고 상장폐지 종목은 누락될 수 있습니다.":
        mode==="custom"?"입력한 각 종목에 같은 Pine 코드를 적용합니다. 결과는 종목별로 저장됩니다.":"한 종목의 차트에서 전략을 실행하고 Strategy Tester 보고서를 확인합니다.") : mode === "market"
-      ? (kr ? "현재 국내 상장 종목 목록" : "현재 미국 상장 종목 목록") + "을 조회해 후보를 찾습니다. 전체 시장은 수집에 시간이 걸리며 과거 상장폐지 종목이 누락될 수 있습니다."
+      ? "현재 상장 목록 또는 공개일이 있는 과거 구성 이력을 선택하세요. 사용한 후보 목록과 제외 종목을 결과에서 확인할 수 있습니다."
       : mode === "single" ? "한 종목에 가용 자본을 배분해 진입·청산 규칙을 검증합니다." : "입력한 종목끼리 매수 후보를 비교하고 동시 보유 한도를 적용합니다.";
     $("bt-symbol").placeholder = kr ? "삼성전자 또는 005930" : "애플 또는 AAPL";
     $("bt-symbols").placeholder = kr ? "삼성전자, SK하이닉스, 현대차" : "애플, MSFT, 엔비디아";
@@ -250,7 +251,7 @@
     $("bt-custom-field").hidden = mode !== "custom"; $("bt-symbols").required = mode === "custom";
     $("bt-sizing").hidden = mode === "single";
     for (const input of $("bt-sizing").querySelectorAll("input,select")) input.disabled = mode === "single";
-    scopeCopy(); conditions.setScope(mode,$("bt-market").value,engine);
+    scopeCopy(); conditions.setScope(mode,$("bt-market").value,engine);showCurrentSelection();
     if ($("bt-pine-market").value!==$("bt-market").value) {
       $("bt-pine-market").value=$("bt-market").value; $("bt-pine-market").dispatchEvent(new Event("change",{bubbles:true}));
     }
@@ -272,10 +273,41 @@
     }
     chartSelection();
   }
+  let fixedSelection=null;
+  function currentSelection() {
+    if(!fixedSelection || $("bt-market").value!==fixedSelection.market || mode==="market")return null;
+    const ids=(mode==="single"?[$("bt-symbol").value]:$("bt-symbols").value.split(/[,;\n]+/)).map(s=>s.trim()).filter(Boolean);
+    const members=fixedSelection.members.map(m=>m.id);
+    return ids.length===members.length && members.every(id=>ids.includes(id))?fixedSelection:null;
+  }
+  function basisText(def) {
+    const shot=def?.selection_snapshot;
+    if(shot)return "스크리너 선정일 고정 묶음 · "+new Date(shot.selected_at).toLocaleString("ko-KR")+" · "+shot.members.length+"종목 · "+shot.provider;
+    if(def?.membership?.length)return "과거 구성 이력으로 재선정 · 편입·편출 "+def.membership.length.toLocaleString("ko-KR")+"건 · 공개일 다음 날부터 사용";
+    return def?.mode==="market"?"현재 상장 목록 기준 · 과거 상장폐지 종목 누락 가능":"직접 지정한 고정 종목";
+  }
+  function showSelection(host, def) {
+    host.replaceChildren();
+    const shot=def.selection_snapshot;
+    if(!shot)return;
+    const detail=node("details",null,"bt-disclosure"), list=node("ul");
+    const f=shot.filters,c=shot.counts;
+    const ranges=f.ranges.map(r=>(r.field.toUpperCase()+" "+(r.min??"−∞")+" ~ "+(r.max??"∞")));
+    detail.append(node("summary",basisText(def)),node("p",["데이터 수집 "+shot.data_as_of,f.exchanges.join(", "),f.sector,f.industry,f.query,...ranges].filter(Boolean).join(" · "),"cost-note"),
+      node("p",`선정 당시 후보 ${c.scope} · 평가 가능 ${c.evaluable} · 통과 ${c.passed} · 미통과 ${c.failed} · 지표 결측 ${c.missing}. 이 목록의 과거 성과에는 선정 시점 편향이 있습니다.`,"cost-note"));
+    for(const m of shot.members)list.append(node("li",[m.name,m.id,m.price_label,m.price==null?"가격 미확인":m.price+" "+m.currency,m.price_as_of&&"가격 기준 "+m.price_as_of,m.fiscal_date&&"재무 기준 "+m.fiscal_date].filter(Boolean).join(" · ")));
+    detail.append(list);host.append(detail);
+  }
+  function showCurrentSelection() {
+    const shot=currentSelection();
+    showSelection($("bt-selection-note"),{selection_snapshot:shot});
+    if(shot)$("bt-scope-details").hidden=true;
+    else if(!conditions.historical?.())$("bt-scope-details").hidden=false;
+  }
   function portableDefinition(body) {
     const {mode,market,symbols,settings,max_positions,ranking,lookback} = body;
     const definition = {mode,market,symbols:[...(symbols || [])],settings:{...settings},max_positions,ranking,lookback};
-    for (const field of ["strategy_code","universe","rebalance","monthly_contribution","dividends","fundamentals"]) {
+    for (const field of ["strategy_code","universe","rebalance","monthly_contribution","dividends","fundamentals","membership","selection_snapshot"]) {
       if (body[field] !== undefined) definition[field] = body[field];
     }
     return definition;
@@ -304,6 +336,8 @@
     const unique=[...new Set(parts)];
     if(selectedMode!=="market" && (!unique.length || !unique[0]))throw new Error("검증할 종목명이나 티커를 입력하세요.");
     if(unique.length>300)throw new Error("직접 지정하는 종목은 최대 300개입니다.");
+    const shot=currentSelection();
+    if(shot)return {market,mode:selectedMode,symbols:unique,universe:{},selection_snapshot:shot};
     const symbols=[];
     if (selectedMode==="single") {
       if(/^[0-9A-Z]+[.](?:KS|KQ)$/i.test(unique[0])) symbols.push(checkMarketSymbol(unique[0].toUpperCase(),market));
@@ -311,7 +345,7 @@
     }else for(let i=0;i<unique.length;i+=4)symbols.push(...await Promise.all(unique.slice(i,i+4).map(q=>yahooSymbol(q,market))));
     return {market,mode:selectedMode,symbols:[...new Set(symbols)],universe:conditions.readScope()};
   }
-  const batch = window.HyperpassPineBatch.mount({api,scopeBody,startJob,save,setBusy,message,revision:()=>revision,invalidate});
+  const batch = window.HyperpassPineBatch.mount({api,scopeBody,startJob,save,setBusy,message,revision:()=>revision,invalidate,basisText});
   async function requestBody() {
     if (!$("bt-form").reportValidity()) throw new Error("검증 조건을 확인하세요.");
     const values = settings(), market = $("bt-market").value, selectedMode = mode;
@@ -321,7 +355,9 @@
     const req = {name:$("bt-name").value.trim(),market:target.market,mode:target.mode,symbols:target.symbols,settings:values,
       max_positions:selectedMode === "single" ? 1 : Number($("bt-positions").value),
       ranking:$("bt-ranking").value,lookback:Number($("bt-lookback").value)};
-    return {...req,...conditions.read()};
+    const options=conditions.read();
+    if(target.selection_snapshot)Object.assign(options,{selection_snapshot:target.selection_snapshot,universe:{}});
+    return {...req,...options};
   }
   function fillLocal(record) {
     $("bt-example-info").hidden=true;
@@ -340,7 +376,7 @@
     $("bt-symbol").value=d.mode==="single" ? (d.symbols?.[0] || "") : "";
     $("bt-symbol").dispatchEvent(new Event("input",{bubbles:true}));
     $("bt-symbols").value=d.mode==="custom" ? (d.symbols||[]).join(", ") : "";
-    conditions.restore(d); showRule(); scopeCopy(); invalidate(); message("bt-feedback",record.name+"의 저장 조건을 불러왔습니다.");
+    fixedSelection=d.selection_snapshot||null;conditions.restore(d);showCurrentSelection(); showRule(); scopeCopy(); invalidate(); message("bt-feedback",record.name+"의 저장 조건을 불러왔습니다.");
   }
   function loadPine(record, target) {
     const d = record.definition;
@@ -356,6 +392,7 @@
     $("bt-symbol").value=target || d.symbol || (d.mode==="single"?d.symbols?.[0]:"") || "";
     $("bt-symbol").dispatchEvent(new Event("input",{bubbles:true}));
     $("bt-symbols").value=(d.symbols||[]).join(", ");
+    fixedSelection=target?null:d.selection_snapshot||null;showCurrentSelection();
     message("bt-pine-feedback",record.name+" 코드를 불러왔습니다. 투자 대상과 주기를 확인하세요.");
     $("tv-code").focus();
   }
@@ -427,8 +464,11 @@
     resultJob=job;
     const r=job.result, m=r.metrics, unit=currency(r.market || job.request.market), coverage=r.coverage;
     const metricData=[
+      ["검증 범위",coverage?.status==="partial"?"일부 자료 누락":coverage?.status==="complete"?"수집 범위 내 완료":"기록 없음"],
+      ["후보 / 시세 사용 / 제외",[coverage?.requested,coverage?.used,coverage?.excluded?.length].map(money).join(" / ")],
+      ["실제 거래 종목",coverage?.traded===0?"0 · 체결 없음":money(coverage?.traded)+"종목"],
       ["비용 차감 수익률",pct(m.total_return_pct)],["최대 낙폭 (MDD)",pct(m.max_drawdown_pct)],
-      ["벤치마크 " + (r.benchmark?.name || r.benchmark?.symbol || ""),pct(m.benchmark_return_pct)],["초과 수익률",Number.isFinite(m.excess_return_pct) ? money(m.excess_return_pct)+"%p" : "—"],
+      ["벤치마크 " + (r.benchmark?.name || r.benchmark?.symbol || ""),Number.isFinite(m.benchmark_return_pct)?pct(m.benchmark_return_pct):"자료 없음"],["초과 수익률",Number.isFinite(m.excess_return_pct) ? money(m.excess_return_pct)+"%p" : "—"],
       ["종료 자산 ("+unit+")",money(m.ending_equity)],["연환산 변동성",pct(m.annualized_volatility_pct)],
       ["샤프 지수",money(m.sharpe)],["완결 거래 / 승률",money(m.closed_trades)+"건 / "+pct(m.win_rate_pct)],
       ["누적 수수료 ("+unit+")",money(m.fees)],["누적 슬리피지 ("+unit+")",money(m.slippage)],["회전율",pct(m.turnover_pct)],
@@ -472,12 +512,14 @@
   function displayJob(job) {
     currentJob=job; clearTimeout(pollTimer);
     $("bt-cancel").hidden=!running(job); $("bt-retry").hidden=true;
+    $("bt-reopen").hidden=running(job) || !job.request;
     $("bt-result-title").textContent=labelOf(job);
+    showSelection($("bt-job-selection"),job.request||{});
     $("bt-status").textContent=statuses[job.status] || job.status;
     const percent=Number.isFinite(job.progress?.percent) ? Math.max(0,Math.min(100,job.progress.percent)) : null;
     $("bt-progress").hidden=!running(job);
     if(percent===null) $("bt-progress").removeAttribute("value"); else $("bt-progress").value=percent;
-    const text=[modeNames[job.request?.mode], job.request?.market, job.progress?.label, running(job) && percent!=null && (Math.round(percent)+"%"),job.error].filter(Boolean).join(" · ");
+    const text=[job.request?.engine==="pine"?"Pine · 종목별 독립 자금":"포트폴리오 · 공유 자금",basisText(job.request),modeNames[job.request?.mode], job.request?.market, job.progress?.label, running(job) && percent!=null && (Math.round(percent)+"%"),job.error].filter(Boolean).join(" · ");
     message("bt-job-message",text || statuses[job.status],["failed","interrupted"].includes(job.status));
     $("bt-result").hidden=true; resultJob=null;
     batch.hide();
@@ -509,7 +551,7 @@
     if (!historyRows.length) target.append(node("p","저장된 실행이 없습니다.","cost-note"));
     for(const job of historyRows) {
       const button=node("button",null,"tv-history-item"); button.type="button";
-      button.append(node("strong",labelOf(job)),node("span",[modeNames[job.mode],statuses[job.status]].filter(Boolean).join(" · ")),node("small",job.created_at?new Date(job.created_at).toLocaleString("ko-KR"):""));
+      button.append(node("strong",labelOf(job)),node("span",[job.engine==="pine"?"Pine · 독립 자금":"공유 자금",job.selected_at&&"고정 선정 "+job.selected_at.slice(0,10),job.historical&&"과거 구성",modeNames[job.mode],statuses[job.status]].filter(Boolean).join(" · ")),node("small",job.created_at?new Date(job.created_at).toLocaleString("ko-KR"):""));
       button.addEventListener("click",()=>openHistory(job.id)); target.append(button);
     }
     if(resume && !currentJob && !pendingRequest) {
@@ -559,7 +601,7 @@
     }
     const d=portableDefinition(record.definition);
     const symbol=checkMarketSymbol((await window.HyperpassSymbols.field("chart-symbol","yahoo")).yahoo,d.market);
-    d.mode="single"; d.symbols=[symbol]; d.max_positions=1;
+    d.mode="single"; d.symbols=[symbol]; d.max_positions=1;delete d.selection_snapshot;delete d.membership;
     window.HyperpassApp.selectWorkspace("tradingview");
     fillLocal({name:record.name,definition:d});
     message("bt-feedback","이 종목의 일봉으로 저장한 규칙·기간·비용을 검증합니다.");
@@ -580,6 +622,7 @@
   }
   $("bt-engine").addEventListener("change",()=>{engine=$("bt-engine").value;setMode(mode);});
   $("bt-scope").addEventListener("change",()=>setMode($("bt-scope").value));
+  for(const id of ["bt-symbol","bt-symbols","bt-market"])$(id).addEventListener("input",showCurrentSelection);
   for(const id of ["bt-target-panel","studio-pine"]) {
     $(id).addEventListener("input",invalidate); $(id).addEventListener("change",invalidate);
   }
@@ -628,7 +671,7 @@
     if(!data.request?.settings) throw new Error("서버에서 실행 조건을 확인하지 못했습니다.");
     previewed={...data.request,name:body.name};
     const summary = $("bt-preview-summary");
-    summary.textContent=conditions.summary(previewed);
+    summary.textContent=basisText(previewed)+" · 공유 자금 · "+conditions.summary(previewed);
     summary.hidden=false; $("bt-run").disabled=false;
     message("bt-feedback","확인한 조건으로 백테스트를 시작할 수 있습니다.");
   }
@@ -681,6 +724,15 @@
     await save($("bt-chart-name").value,"chart",{settings:s,interval:await currentInterval()},rule.source);
     message("bt-chart-feedback","이 차트의 매매 규칙과 비용·검증 조건을 저장했습니다.");
   }));
+  $("bt-reopen").addEventListener("click",()=>{
+    const job=currentJob;
+    if(!job?.request || running(job))return;
+    try{
+      const record={name:labelOf(job),definition:job.request};
+      if(job.request.engine==="pine")loadPine(record);else fillLocal(record);
+      $("bt-target-panel").scrollIntoView({block:"start"});
+    }catch(e){message("bt-job-message",e.message,true);}
+  });
   $("bt-cancel").addEventListener("click",()=>setBusy($("bt-cancel"),"bt-job-message",async()=>{
     const id=currentJob.id, version=++requestVersion; clearTimeout(pollTimer);
     try {
@@ -714,12 +766,12 @@
   }));
   document.addEventListener("hyperpass:workspace-change",onOpen);
   document.addEventListener("hyperpass:show-pine-backtest", () => {engine="pine"; setMode("single"); legacyLog.open=true;});
-  window.HyperpassBacktest={openSymbols({market,symbols,name}) {
+  window.HyperpassBacktest={openSymbols({market,symbols,name,selection_snapshot}) {
     if(!["US","KR"].includes(market)||!Array.isArray(symbols)||!symbols.length||symbols.length>300)throw new Error("검증할 시장과 1~300개 종목을 선택하세요.");
     engine="pine"; $("bt-market").value=market;setMode(symbols.length===1?"single":"custom");
     if(mode==="single") {$("bt-symbol").value=symbols[0];$("bt-symbol").dispatchEvent(new Event("input",{bubbles:true}));}
     else $("bt-symbols").value=symbols.join(", ");
-    conditions.restoreScope({});if(name)$("bt-pine-name").value=name;
+    fixedSelection=selection_snapshot||null;conditions.restoreScope({});showCurrentSelection();if(name)$("bt-pine-name").value=name;
     $("bt-market").dispatchEvent(new Event("change",{bubbles:true}));
     window.HyperpassApp.selectWorkspace("tradingview");
     $("bt-target-panel").scrollIntoView({block:"start"});

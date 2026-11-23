@@ -13,11 +13,11 @@
     const link=el("a");link.href=url;link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   };
   const scopes={single:"단일 종목",custom:"종목 묶음",market:"시장 전체"};
-  function mount({api,scopeBody,startJob,save,setBusy,message,revision,invalidate}) {
+  function mount({api,scopeBody,startJob,save,setBusy,message,revision,invalidate,basisText}) {
     let approved=null, selected=null;
     const box=el("div");box.id="bt-pine-results";box.hidden=true;
     box.innerHTML=`<p id="bt-batch-basis" class="studio-summary"></p><p id="bt-batch-count" class="portfolio-summary"></p>
-      <div class="studio-scroll"><table><thead><tr><th>종목</th><th>상태</th><th>순수익률</th><th>최대 낙폭</th><th>거래 수</th><th>통화</th><th>보고서 · 사유</th></tr></thead><tbody id="bt-batch-rows"></tbody></table></div>
+      <div class="studio-scroll"><table><thead><tr><th>종목</th><th>상태</th><th>순수익률</th><th>최대 낙폭</th><th>매수 후 보유</th><th>수수료</th><th>거래 수</th><th>통화</th><th>보고서 · 사유</th></tr></thead><tbody id="bt-batch-rows"></tbody></table></div>
       <button type="button" id="bt-pine-more" class="text-button" hidden></button>
       <p id="bt-batch-restore" class="cost-note"></p>
       <div class="bt-tested-strategy"><label class="field-label" for="bt-pine-tested-name">저장할 전략 이름</label><input id="bt-pine-tested-name" maxlength="120">
@@ -44,7 +44,7 @@
       const normalized=approved.request;
       const source=normalized.mode==="market"?"선택한 거래소·업종의 전체 종목":(normalized.symbols||[]).join(", ");
       const universe=normalized.universe||{}, groups=[...(universe.sectors||[]),...(universe.industries||[])];
-      $("bt-pine-preview-summary").textContent=[normalized.market==="KR"?"국내":"미국",scopes[normalized.mode],source,
+      $("bt-pine-preview-summary").textContent=[normalized.market==="KR"?"국내":"미국",scopes[normalized.mode],basisText(normalized),source,
         universe.exchanges?.length?universe.exchanges.join(", "):"전체 거래소",groups.length?"선택 업종 "+groups.length+"개":"전체 업종",normalized.timeframe,
         "종목별 Strategy Tester 순차 실행 · 날짜·자금·비용은 Pine 코드와 TradingView 설정 사용"].join(" · ");
       $("bt-pine-preview-summary").hidden=false;$("bt-pine-run").disabled=false;
@@ -60,7 +60,7 @@
     $("bt-save-tested-pine").addEventListener("click",()=>setBusy($("bt-save-tested-pine"),"bt-pine-result-feedback",async()=>{
       if(!selected || !(selected.result?.completed>0))throw new Error("완료된 종목 보고서를 먼저 확인하세요.");
       const req=selected.request;
-      const definition={engine:"pine",market:req.market,mode:req.mode,symbols:req.symbols||[],universe:req.universe||{},code:req.code,timeframe:req.timeframe};
+      const definition={engine:"pine",market:req.market,mode:req.mode,symbols:req.symbols||[],universe:req.universe||{},code:req.code,timeframe:req.timeframe,...(req.selection_snapshot?{selection_snapshot:req.selection_snapshot}:{})};
       await save($("bt-pine-tested-name").value,"pine",definition,"TradingView 코드 실행 "+selected.id);
       message("bt-pine-result-feedback","이번 실행의 원문 코드와 투자 대상을 내 전략에 저장했습니다.");
     }));
@@ -75,8 +75,8 @@
       $("bt-pine-tested-name").hidden=!canSave;
       box.querySelector("label[for='bt-pine-tested-name']").hidden=!canSave;
       $("bt-pine-backup").hidden=!result.previous_source;
-      $("bt-batch-basis").textContent="종목별 Strategy Tester 결과입니다. 원본 JSON에서 각 보고서의 통화, 검증 기간과 실행 정보를 확인할 수 있습니다.";
-      $("bt-batch-count").textContent=[["대상",result.requested],["완료",result.completed],["실패",result.failed],["건너뜀",result.skipped]].map(([l,n])=>l+" "+number(n)+"종목").join(" · ");
+      $("bt-batch-basis").textContent="종목마다 별도 초기 자금으로 실행합니다. 표의 수익률·낙폭·매수 후 보유 기준은 각 종목의 Strategy Tester 값입니다. 합산 포트폴리오 수익률과 시장 지수 초과수익률은 산출하지 않습니다. 비용은 사용한 Pine 속성을 따르며 미보고 값은 —로 표시합니다.";
+      $("bt-batch-count").textContent=[["대상",result.requested],["완료",result.completed],["실패",result.failed],["건너뜀",result.skipped],["완결 거래 0건",items.filter(r=>r.status==="completed"&&r.metrics?.total_trades===0).length]].map(([l,n])=>l+" "+number(n)+"종목").join(" · ");
       $("bt-batch-restore").textContent=result.restore?.message||"";
       message("bt-pine-result-feedback","");
       const body=$("bt-batch-rows");body.replaceChildren();let next=0;
@@ -85,7 +85,7 @@
           const tr=body.insertRow(), m=row.metrics||{};
           const pc=n=>Number.isFinite(n)?number(n)+"%":"—";
           for(const val of [[row.symbol,row.name&&row.name!==row.symbol?row.name:""].filter(Boolean).join(" · "),label(row.status),pc(m.net_profit_percent),
-             pc(m.max_drawdown_percent),number(m.total_trades),row.currency||"—"]) tr.append(el("td",val));
+             pc(m.max_drawdown_percent),pc(m.buy_hold_return_percent),number(m.commission_paid),number(m.total_trades),row.currency||"—"]) tr.append(el("td",val));
           const detail=el("td");
           if(Number.isInteger(row.report_index) && row.report_index>=0 && row.status==="completed"){
             const b=el("button","원본 JSON ↓","text-button");b.type="button";

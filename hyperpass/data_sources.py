@@ -296,6 +296,7 @@ class DataSources:
             raise DataSourceError("Yahoo 응답에 가격 이력이 없습니다.")
         return {"records": records[-(1600 if cfg.get('chart_lab') else 100):], "as_of": records[-1]["timestamp"], "currency": meta.get("currency", "unknown"), "timeframe": interval,
                 "instrument_name": str(meta.get("longName") or meta.get("shortName") or "")[:180], "exchange_code": str(meta.get("exchangeName") or "")[:20],
+                "exchange_timezone": str(meta.get("exchangeTimezoneName") or "")[:80],
                 "warning": "Yahoo 비공식 공개 차트 경로입니다. 차단·변경될 수 있으며 일봉 OHLC는 별도 배당 조정 수익률이 아닙니다.", "source_url": url}
 
     def chart_history(self, symbol, period='2y', interval='1d'):

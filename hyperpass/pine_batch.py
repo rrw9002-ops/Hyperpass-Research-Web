@@ -11,7 +11,7 @@ from .tradingview_chart import _port
 def validate(payload):
     if not isinstance(payload, dict) or payload.get('engine') != 'pine':
         raise ValueError('TradingView Pine 실행 방식을 선택하세요.')
-    allowed = {'name','engine','market','mode','symbols','universe','code','timeframe','port','target_id'}
+    allowed = {'name','engine','market','mode','symbols','universe','code','timeframe','port','target_id','selection_snapshot'}
     if set(payload) - allowed:
         raise ValueError('Pine 실행 조건을 확인하세요. 매매 규칙·기간·수수료는 전략 코드와 TradingView 속성을 사용합니다.')
     market, mode = payload.get('market'), payload.get('mode')
@@ -32,8 +32,15 @@ def validate(payload):
     span = title_span(code)
     if len(new_execution(code, span)[0].encode('utf-8')) > tv._MAX_CODE:
         raise ValueError('실행 식별용 표시 제목을 포함한 Pine 코드는 200KB 이하여야 합니다.')
-    return {'engine':'pine', 'market':market, 'mode':mode, 'symbols':[s.strip() for s in symbols],
-            'universe':validate_universe(market, payload.get('universe',{})), 'code':code,
+    universe = validate_universe(market, payload.get('universe',{}))
+    extra = {}
+    if 'selection_snapshot' in payload:
+        from .selection_snapshot import normalize_selection
+        if mode == 'market' or any(universe.values()):
+            raise ValueError('선정일 고정 묶음에는 저장한 종목 전체를 사용합니다.')
+        extra['selection_snapshot'] = normalize_selection(payload['selection_snapshot'], market, symbols)
+    return {**extra, 'engine':'pine', 'market':market, 'mode':mode, 'symbols':[s.strip() for s in symbols],
+            'universe':universe, 'code':code,
             'timeframe':tf, 'port':_port(payload.get('port',9222)), 'target_id':target}
 
 
@@ -272,7 +279,13 @@ def run(request, stop, checkpoint, store_row, backup):
     try:
         checkpoint(0,'검증 대상 종목·거래소를 확인하고 있습니다.',result)
         span = title_span(request['code'])
-        members, source = pine_universe(request['mode'],request['market'],request['symbols'],request['universe'])
+        snapshot = request.get('selection_snapshot')
+        if snapshot:
+            members = {m['id']:{'name':m['name'], 'target_symbol':m['id']} for m in snapshot['members']}
+            source = '스크리너 선정일 고정 목록 · ' + snapshot['selected_at']
+            result['selection_snapshot'] = snapshot
+        else:
+            members, source = pine_universe(request['mode'],request['market'],request['symbols'],request['universe'])
         if not members:
             raise ValueError('조건에 해당하는 Pine 검증 대상이 없습니다.')
         result.update(requested=len(members), universe_source=source)

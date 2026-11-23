@@ -14,6 +14,13 @@
 
   function mount({api, invalidate, message, labelMode}) {
     $("bt-universe-options").innerHTML=`
+      <div id="bt-historical" hidden><label class="field-label" for="bt-membership-mode">검증 기간의 종목 구성</label>
+        <select id="bt-membership-mode"><option value="current">현재 상장 종목 목록</option><option value="history">공개일이 있는 과거 구성 이력 CSV</option></select>
+        <div id="bt-membership-upload" hidden><p class="cost-note">당시 대상 시장·업종에 속했던 종목의 편입(in)과 편출(out)을 입력하세요. 효력일과 공개일 다음 날 중 늦은 날부터 후보에 반영합니다. 편입 전 상태는 미편입입니다. 첫날 구성과 상장폐지 종목도 포함하세요.</p>
+          <label class="field-label" for="bt-membership-file">편입·편출 CSV (UTF-8, 6 MiB 이하)</label>
+          <input id="bt-membership-file" type="file" accept=".csv,text/csv">
+          <button type="button" class="text-button" id="bt-membership-sample">CSV 양식 다운로드</button>
+          <p class="feedback" id="bt-membership-feedback" role="status"></p></div></div>
       <details class="bt-disclosure" id="bt-scope-details"><summary>거래소·업종 선택 <span id="bt-scope-count">전체</span></summary>
         <div class="bt-disclosure-body"><p id="bt-market-meta" class="cost-note" role="status"></p>
           <div id="bt-exchanges"></div><div id="bt-industries"></div>
@@ -167,7 +174,7 @@
       } catch(error){message("bt-code-feedback",error instanceof SyntaxError?"JSON 문법을 확인하세요. "+error.message:error.message,true);}
     });
     $("bt-code-reset").addEventListener("click",()=>{reflectCode();invalidate();});
-    $("bt-upgrade").addEventListener("click",()=>{legacy=false;drawFactors();showSchedule();invalidate();});
+    $("bt-upgrade").addEventListener("click",()=>{legacy=false;drawFactors();showSchedule();drawMembership();invalidate();});
     $("bt-frequency").addEventListener("change",showSchedule);
     function showRows(status="") {
       $("bt-eps-count").textContent=rows.length.toLocaleString("ko-KR")+"행";
@@ -293,16 +300,52 @@
     $("bt-scope-details").addEventListener("toggle",()=>{if($("bt-scope-details").open)loadOptions();});
     $("bt-scope-retry").addEventListener("click",loadOptions);
 
+    let membership=[], membershipPending=false, membershipGeneration=0;
+    function historical() {
+      return mode==="market" && activeEngine==="portfolio" && !legacy && $("bt-membership-mode").value==="history";
+    }
+    function drawMembership() {
+      $("bt-historical").hidden=mode!=="market" || activeEngine!=="portfolio" || legacy;
+      $("bt-membership-upload").hidden=!historical();
+      $("bt-scope-details").hidden=historical();
+    }
+    function resetMembership(records=[]) {
+      membershipGeneration++;membershipPending=false;membership=records;
+      $("bt-membership-file").value="";
+      $("bt-membership-mode").value=records.length?"history":"current";
+      message("bt-membership-feedback",records.length?records.length+"건의 편입·편출 이력을 불러왔습니다.":"");
+      drawMembership();
+    }
+    $("bt-membership-mode").addEventListener("change",()=>{drawMembership();invalidate();});
+    $("bt-membership-sample").addEventListener("click",()=>{
+      const symbol=market==="KR"?"005930.KS":"AAPL";
+      const csv="\ufeffsymbol,effective_date,available_date,member\r\n"+symbol+",YYYY-MM-DD,YYYY-MM-DD,in\r\n"+symbol+",YYYY-MM-DD,YYYY-MM-DD,out\r\n";
+      const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
+      const link=create("a");link.href=url;link.download="membership-"+market+".csv";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    });
+    $("bt-membership-file").addEventListener("change",async()=>{
+      const rev=++membershipGeneration,file=$("bt-membership-file").files[0];membership=[];membershipPending=!!file;invalidate();
+      if(!file){message("bt-membership-feedback","");return;}
+      message("bt-membership-feedback","편입·편출 자료를 확인하고 있습니다.");
+      try{
+        if(file.size>6*1024*1024)throw new Error("구성 이력은 6 MiB 이하 CSV를 선택하세요.");
+        const data=await api("/api/backtests/membership/import",{market,csv:await file.text()});
+        if(rev!==membershipGeneration)return;
+        membership=data.membership;
+        message("bt-membership-feedback",membership.length.toLocaleString("ko-KR")+"건 · "+new Set(membership.map(r=>r.symbol)).size+"종목");
+      }catch(e){if(rev===membershipGeneration)message("bt-membership-feedback",e.message,true);}
+      finally{if(rev===membershipGeneration){membershipPending=false;invalidate();}}
+    });
     function setScope(nextMode,nextMarket,nextEngine) {
       mode=nextMode;activeEngine=nextEngine;
       $("bt-universe-options").hidden=legacy && activeEngine!=="pine";
       if(market!==nextMarket){
-        market=nextMarket; scope={exchanges:[],sectors:[],industries:[]};options=null;loadPending=false;generation++;
+        market=nextMarket;resetMembership(); scope={exchanges:[],sectors:[],industries:[]};options=null;loadPending=false;generation++;
         exchangesEmpty=false;industriesEmpty=false;rows=[];fileRevision++;uploadPending=false;$("bt-eps-file").value="";showRows();
         $("bt-exchanges").replaceChildren();$("bt-industries").replaceChildren();$("bt-market-meta").textContent="";
         if($("bt-scope-details").open)loadOptions();
       }
-      scopeLabel();
+      scopeLabel();drawMembership();
     }
     function restoreScope(value) {
       scope=structuredClone(value||{exchanges:[],sectors:[],industries:[]});
@@ -310,11 +353,12 @@
       exchangesEmpty=false;industriesEmpty=false;scopeLabel();renderCatalog();
     }
     function readScope() {
+      if(historical())return {exchanges:[],sectors:[],industries:[]};
       if(exchangesEmpty || industriesEmpty) throw new Error("검증할 거래소와 업종을 각각 하나 이상 선택하세요.");
       return structuredClone(scope);
     }
     function restore(def) {
-      legacy=!def.strategy_code;
+      legacy=!def.strategy_code;resetMembership(def.membership||[]);
       code=legacy?{version:1,entry:"technical",exit:"technical",factors:[{field:"momentum",order:def.ranking==="momentum_low"?"asc":"desc"}]}:
         validateCode(typeof def.strategy_code==="string"?JSON.parse(def.strategy_code):structuredClone(def.strategy_code));
       scope=structuredClone(def.universe||{exchanges:[],sectors:[],industries:[]});
@@ -330,17 +374,18 @@
       if(legacy)return {};
       if(dirty)throw new Error("편집한 전략 코드를 적용하거나 편집 취소를 누르세요.");
       if(uploadPending) throw new Error("EPS 자료를 읽은 뒤 다시 확인하세요.");
-      if(exchangesEmpty || industriesEmpty)throw new Error("검증할 거래소와 업종을 각각 하나 이상 선택하세요.");
+      if(historical() && (membershipPending || !membership.length))throw new Error("과거 구성 CSV를 불러온 뒤 실행 조건을 확인하세요.");
+      if(!historical() && (exchangesEmpty || industriesEmpty))throw new Error("검증할 거래소와 업종을 각각 하나 이상 선택하세요.");
       validateCode(code);
       return {strategy_code:structuredClone(code),rebalance:{frequency:$("bt-frequency").value,month:Number($("bt-month").value)},
-        universe:structuredClone(scope),fundamentals:rows.slice(),dividends:$("bt-dividends").checked,monthly_contribution:Number($("bt-contribution").value)};
+        universe:readScope(),...(historical()?{membership}:{}),fundamentals:rows.slice(),dividends:$("bt-dividends").checked,monthly_contribution:Number($("bt-contribution").value)};
     }
     function summary(def) {
       const s=def.settings, u=def.universe||{}, money=v=>Number(v).toLocaleString("ko-KR"), unit=def.market==="KR"?"원":" USD";
       const parts=[def.market==="KR"?"국내":"미국",labelMode(def.mode),s.start_date+" ~ "+s.end_date,
         "시작 자본 "+money(s.initial_capital)+unit, "최대 "+def.max_positions+"종목",
         "수수료 "+s.fee_bps+"bp / 슬리피지 "+s.slippage_bps+"bp"];
-      if(def.strategy_code)parts.push("거래소 "+choicesLabel(u.exchanges||[]),u.sectors?.length || u.industries?.length?"업종 제한 적용":"전체 업종",
+      if(def.strategy_code)parts.push(def.membership?"제출한 과거 구성 목록":"거래소 "+choicesLabel(u.exchanges||[]),def.membership?"당시 구성에 포함된 업종":u.sectors?.length || u.industries?.length?"업종 제한 적용":"전체 업종",
         frequencyNames[def.rebalance.frequency]+(["quarterly","annual"].includes(def.rebalance.frequency)?" ("+def.rebalance.month+"월 기준)":""),
         "월 납입 "+money(def.monthly_contribution)+unit,def.dividends?"현금 배당 포함":"현금 배당 제외");
       if(def.strategy_code) {
@@ -351,7 +396,7 @@
       return parts.join(" · ");
     }
     drawFactors();scopeLabel();showSchedule();showRows();
-    return {setScope,restore,restoreScope,readScope,summary,read};
+    return {setScope,restore,restoreScope,readScope,summary,read,historical};
   }
   function pineTemplate({api,message,setBusy,rules,defaults}) {
     const pane=create("details",null,"bt-disclosure bt-pine-template");

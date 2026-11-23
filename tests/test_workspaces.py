@@ -126,6 +126,28 @@ class WorkspaceHTTPTests(unittest.TestCase):
 
     def test_selected_agent_receives_stored_chart_evidence_and_preserves_link(self):
         _,_,chart=self.create_chart()
+        source_id=chart['id']
+        overlay={'name':'이틀 평균','code':'indicator("개인 평균", overlay=true)\nplot(ta.sma(close,2), "평균")',
+                 'ohlcv_sha256':chart['provenance']['ohlcv_sha256']}
+        path='/api/charts/'+source_id+'/save'
+        status,_,saved_overlay=self.request(path,{'personal_indicator':overlay})
+        self.assertEqual(status,200,saved_overlay)
+        self.assertEqual(self.request(path,{'personal_indicator':overlay})[2],saved_overlay)
+        chart=self.request('/api/charts/'+saved_overlay['id'])[2]
+        self.assertEqual(chart['parent_chart_id'],source_id)
+        self.assertNotIn('personal_indicator',self.app.store.get_chart(source_id))
+        self.assertNotEqual(source_id,chart['id'])
+        archived=chart['personal_indicator']
+        self.assertEqual(archived['code'],overlay['code'])
+        point=archived['summary']['latest_values'][0]
+        self.assertAlmostEqual(point['value'],sum(b['close'] for b in chart['candles'][-2:])/2)
+        self.assertEqual(point['bar_time'],chart['candles'][-1]['timestamp'])
+        for invalid in [dict(overlay,ohlcv_sha256='0'*64),dict(overlay,latest_values=[999]),dict(overlay,parameters={}),
+                        dict(overlay,code='indicator("bad", overlay=true)\nplot(unknown(close))')]:
+            self.assertEqual(self.request(path,{'personal_indicator':invalid})[0],400)
+        stripped=self.request('/api/charts/'+chart['id']+'/save',{'personal_indicator':None})[2]
+        self.assertNotIn('personal_indicator',self.app.store.get_chart(stripped['id']))
+        self.assertEqual(archived,self.app.store.get_chart(chart['id'])['personal_indicator'])
         self.app.provider=object()  # An in-process test double; no key or network.
         completed={'status':'completed','report':'Synthetic integration result, not AI research.',
                    'report_complete':True,'artifacts':[], 'usage':{'calls':0},
@@ -141,9 +163,14 @@ class WorkspaceHTTPTests(unittest.TestCase):
             supplied=engine.return_value.run.call_args.kwargs
         self.assertEqual(supplied['target_role'],'technical-analyst')
         self.assertIn(chart['evidence_summary']['provenance']['ohlcv_sha256'],supplied['evidence'])
+        self.assertIn(archived['summary']['code_sha256'],supplied['evidence'])
+        self.assertIn(point['bar_time'],supplied['evidence'])
+        self.assertNotIn('plot(ta.sma',supplied['evidence'])
         self.assertIn('User-provided fixture context.',supplied['evidence'])
         self.assertNotIn('CLIENT-FORGED',supplied['evidence'])
         self.assertEqual(saved['chart_id'],chart['id'])
+        self.assertIn('첨부한 차트의 개인 지표', saved['report'])
+        self.assertIn(point['bar_time'], saved['report'])
         self.assertEqual(saved['target_role'],'technical-analyst')
         self.assertEqual(saved['status'],'completed')
 

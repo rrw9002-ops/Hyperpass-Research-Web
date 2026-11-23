@@ -69,6 +69,19 @@ def validate_request(payload):
     if 'fundamentals' in payload:
         from .market_factors import validate_fundamentals
         options['fundamentals'] = validate_fundamentals(market, payload['fundamentals'])
+    if 'membership' in payload:
+        from .membership import validate
+        if mode != 'market' or symbols or not extended or any(options.get('universe', {}).values()):
+            raise MarketBacktestError('과거 구성 이력은 포트폴리오 시장 전체에서 사용합니다. 업로드 파일에 당시 시장·업종에 속한 종목만 넣으세요.')
+        options['membership'] = validate(market, payload['membership'])
+    if 'selection_snapshot' in payload:
+        from .selection_snapshot import normalize_selection
+        if mode == 'market' or any(options.get('universe', {}).values()):
+            raise MarketBacktestError('스크리너 선정 묶음에는 저장한 종목 전체를 사용합니다. 추가 거래소·업종 제한을 해제하세요.')
+        snapshot = normalize_selection(payload['selection_snapshot'], market, symbols)
+        if len({m['yahoo'] for m in snapshot['members']}) != len(symbols):
+            raise MarketBacktestError('스크리너 구성에 같은 과거 가격 티커가 중복되어 공유 자금을 배분할 수 없습니다.')
+        options['selection_snapshot'] = snapshot
     settings['start_date'], settings['end_date'] = start.isoformat(), end.isoformat()
     return {'market':market, 'mode':mode, 'symbols':[] if mode == 'market' else [s.strip() for s in symbols],
             'settings':settings, 'max_positions':1 if mode == 'single' else max_positions,
@@ -117,7 +130,7 @@ def _required_bars(options):
     return max(warmup, options['lookback'] + 1 if momentum else 1)
 
 
-def _prepare(rows, options, fundamentals=()):
+def _prepare(rows, options, fundamentals=(), membership=None):
     settings = options['settings']
     start, end = settings['start_date'], settings['end_date']
     code = options.get('strategy_code')
@@ -137,7 +150,7 @@ def _prepare(rows, options, fundamentals=()):
     required = _required_bars(options)
     previous_session = None
     tape = Tape(array('i'), array('d'), array('d'), [], [], False)
-    ready = 0
+    ready = eligible_bars = 0
     for i, row in enumerate(rows):
         if not start <= row[0] <= end:
             continue
@@ -154,6 +167,10 @@ def _prepare(rows, options, fundamentals=()):
                     raise MarketBacktestError('배당 자료를 확인할 수 없는 일봉입니다.')
                 if row[6]:
                     tape.dividends[ordinal] = row[6]
+        if membership and not membership.active(ordinal):
+            ready += int(i+1 >= required)
+            continue
+        eligible_bars += 1
         if i+1 < required:
             if screener and decision:
                 tape.missing_scores += 1
@@ -173,6 +190,8 @@ def _prepare(rows, options, fundamentals=()):
             tape.entries.append((ordinal, score))
         if exits and exits[i] and (not code or code['exit'] in ('technical', 'either')):
             tape.exits.append(ordinal)
+    if membership and not eligible_bars:
+        raise MarketBacktestError('이 종목의 알려진 편입 기간에 관측된 일봉이 없습니다.')
     if ready < 2:
         raise MarketBacktestError(f'지표 준비 {required}봉과 기간 내 평가 일봉 2개가 필요합니다.')
     return tape
@@ -194,7 +213,8 @@ def _download_universe(members, options, start, end, cache, report, stop, book=N
             currency, bars = read_prices(symbol, start, end, cache)
         if currency != expected_currency:
             raise MarketBacktestError(f'가격 통화 {currency} · 시장 기준 {expected_currency}와 다름')
-        tape = _prepare(bars, options, (fundamentals or {}).get(symbol, ()))
+        timeline = options.get('_membership', {}).get(symbol)
+        tape = _prepare(bars, options, (fundamentals or {}).get(symbol, ()), timeline)
         tape.omitted = tuple(getattr(bars, 'omitted', ()))
         return tape
 
@@ -270,6 +290,8 @@ def _portfolio(tapes, names, sessions, entries, exits, options, stop, multiplier
                 pos['dividend_income'] += credit
                 dividend_income += credit
                 new_cash += credit
+        if options.get('_membership'):
+            candidates = [item for item in candidates if options['_membership'][item[1]].active(day)]
         retained = set(holdings) - pending_exits.keys() if code else set()
         for symbol, sig_day in list(pending_exits.items()):
             tape = tapes[symbol]
@@ -384,6 +406,10 @@ def _portfolio(tapes, names, sessions, entries, exits, options, stop, multiplier
         curve.append({'date':_iso(day), 'equity':equity, 'drawdown_pct':drawdown})
         if code:
             curve[-1].update(contribution=deposit, return_index=nav/capital*100)
+        if options.get('_membership'):
+            for symbol in holdings:
+                if not options['_membership'][symbol].active(day):
+                    pending_exits.setdefault(symbol, day)
         if leaders is not None and day in leaders:
             for symbol in holdings.keys() - leaders[day]:
                 i = tapes[symbol].index(day)
@@ -466,9 +492,19 @@ def run_backtest(payload, progress_callback=None, stop_event=None, *, cache_dir=
     if requires_per and not fundamentals:
         raise MarketBacktestError('PER 조건에는 검증 기간 종료 전 공시된 종목별 EPS 자료가 필요합니다.')
     universe_args = (options['mode'], options['market'], options['symbols'])
-    members, source = resolve_universe(*universe_args, universe=options['universe']) if options.get('universe') else resolve_universe(*universe_args)
+    snapshot = options.get('selection_snapshot')
+    if options.get('membership'):
+        from .membership import timelines
+        options['_membership'] = timelines(options['membership'], start, end)
+        members = {s:s for s in options['_membership']}
+        source = '사용자 제공 과거 편입·편출 이력과 공개일'
+    elif snapshot:
+        members = {m['yahoo']:m['name'] for m in snapshot['members']}
+        source = '스크리너 선정일 고정 목록 · ' + snapshot['provider']
+    else:
+        members, source = resolve_universe(*universe_args, universe=options['universe']) if options.get('universe') else resolve_universe(*universe_args)
     if not members:
-        raise MarketBacktestError('대상 종목 목록이 비어 있습니다.')
+        raise MarketBacktestError('검증 기간에 공개·발효된 편입 종목이 없습니다.' if options.get('membership') else '대상 종목 목록이 비어 있습니다.')
     targets = {s:n for s,n in members.items() if s in fundamentals} if requires_per else members
     if not targets:
         raise MarketBacktestError('선택한 대상과 일치하는 과거 공시 EPS가 없습니다. 종목과 공시일을 확인하세요.')
@@ -531,7 +567,11 @@ def run_backtest(payload, progress_callback=None, stop_event=None, *, cache_dir=
     omitted = {s:list(t.omitted) for s,t in tapes.items() if t.omitted}
     if omitted:
         warnings.append(f'가격 범위 오류·결측 등으로 {sum(map(len,omitted.values())):,}개 일봉을 제외했습니다. 종목별 일자는 결과 JSON에 있습니다.')
-    if options['mode'] == 'market':
+    if options.get('membership'):
+        warnings.insert(0, '과거 구성은 제출한 편입·편출 이력의 공개일 다음 날과 효력일 중 늦은 날부터 반영합니다. 상장폐지 시세와 제출 자료의 완전성은 별도 검증이 필요합니다. 편출을 확인하면 다음 관측 시가에서 청산합니다.')
+    elif snapshot:
+        warnings.insert(0, '선정일에 통과한 종목을 전 기간에 고정합니다. 과거 선정일별 구성은 재현하지 않으며 생존·선택 편향이 발생할 수 있습니다.')
+    elif options['mode'] == 'market':
         warnings.insert(0, CURRENT_LIST_WARNING)
     if excluded:
         warnings.append(f'가격 이력·통화·준비 기간 문제로 {len(excluded)}개 종목을 제외했습니다. 제외 사유와 검증된 범위를 확인하세요.')
@@ -551,6 +591,14 @@ def run_backtest(payload, progress_callback=None, stop_event=None, *, cache_dir=
                 'source':source, 'as_of':datetime.now(timezone.utc).date().isoformat(), 'market':options['market'],
                 'price_source':'Yahoo Finance 일봉 OHLC (비공식 공개 차트)', 'first_session':_iso(ordered[0]),
                 'last_session':_iso(ordered[-1]), 'late_warmup':late}
+    coverage['selection_basis'] = ('historical_membership' if options.get('membership') else
+                                   'screener_fixed_basket' if snapshot else
+                                   'current_listings' if options['mode'] == 'market' else 'fixed_symbols')
+    if snapshot:
+        coverage['as_of'] = snapshot['selected_at']
+    elif options.get('membership'):
+        coverage['as_of'] = None
+        coverage['membership_events'] = len(options['membership'])
     coverage['omitted_price_bars'] = omitted
     if omitted:
         coverage['status'] = 'partial'
@@ -561,6 +609,7 @@ def run_backtest(payload, progress_callback=None, stop_event=None, *, cache_dir=
                                    'symbols_with_comparable_factors':sum(t.observed_scores > 0 for t in tapes.values()),
                                    'as_of_eps_symbols':len(targets) if requires_per else None}
         if missing:
+            coverage['status'] = 'partial'
             warnings.append(f'지표 준비·EPS·거래량 등 조건값이 없는 {missing:,}개 종목별 평가 시점은 순위에서 제외했습니다.')
         if not entries or not any(entries.values()):
             warnings.append('선택 기간에 조건을 만족하는 매수 후보가 없었습니다.')
@@ -580,4 +629,7 @@ def run_backtest(payload, progress_callback=None, stop_event=None, *, cache_dir=
                             '순위 이탈은 선정일에 유효한 조건값이 있는 보유 종목에만 판단하며, 기술 매도 신호는 매일 확인합니다. '
                             '선정이 유지된 종목은 기본 보유 수량을 유지합니다.')
         result['risk_basis'] = '수익률·MDD는 외부 적립금을 제외한 종가 시간가중 수익률 기준입니다. 변동성과 샤프는 연 252일, 무위험 금리 0% 가정입니다.'
+    result['basis'] = 'shared_cash_portfolio'
+    if snapshot:
+        result['selection_snapshot'] = snapshot
     return result

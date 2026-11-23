@@ -22,7 +22,7 @@
         <label class="field-label" for="tv-personal-name">저장할 이름</label><input id="tv-personal-name" maxlength="120" placeholder="예: 나의 고점 추세선"></div></div>
       <label class="field-label" for="tv-personal-code">Pine 지표 코드</label>
       <textarea id="tv-personal-code" rows="10" maxlength="64000" spellcheck="false" placeholder='//@version=6&#10;indicator("나의 이동평균", overlay=true)&#10;plot(ta.sma(close, 20))'></textarea>
-      <p class="cost-note">고점 추세선, 가격선, SMA·EMA, 구간 최고·최저가를 현재 봉에 그립니다. 적용 상태는 이 화면에서 유지됩니다. 다시 쓸 코드는 ‘내 지표에 저장’으로 보관하세요. 저장한 차트와 에이전트에게 보내는 근거에는 이 개인 지표가 포함되지 않습니다.</p>
+      <p class="cost-note">고점 추세선, 가격선, SMA·EMA, 구간 최고·최저가를 현재 봉에 그립니다. 차트에서 ‘차트 저장·AI 질문에 이 지표 첨부’를 선택하면 원본 코드와 계산값이 해당 차트에 보관됩니다. AI는 계산값과 확인 시점을 받습니다. 코드를 다시 편집하려면 ‘내 지표에 저장’을 누르세요.</p>
       <div class="workspace-actions"><button type="button" class="button primary" id="personal-local-apply">현재 종목 차트에 표시 ↑</button>
         <button type="button" class="button ghost" id="tv-personal-save">내 지표에 저장</button></div>
       <p id="tv-personal-feedback" class="feedback" role="status" aria-live="polite"></p>
@@ -110,6 +110,13 @@
     }
   }
   $("personal-local-apply").addEventListener("click", () => applyLocal(true));
+  document.addEventListener("hyperpass:archived-indicator", event => {
+    if (!canReplace()) return;
+    showDraft(event.detail);
+    panel.scrollIntoView({block:"start"});
+    code.focus({preventScroll:true});
+    setMessage("저장 당시의 코드를 열었습니다. 편집한 뒤 현재 차트에 적용하거나 내 지표에 저장하세요.");
+  });
   function useExample() {
     showDraft(trend);
     applyLocal(false);

@@ -45,6 +45,38 @@ class ResearchDeskTests(unittest.TestCase):
         self.desk.unfollow('NASDAQ:AAPL')
         self.assertEqual(self.desk.watchlist(),[])
 
+    def test_watch_selection_and_first_judgment_survive_later_edits(self):
+        from copy import deepcopy
+        snap=dict(version=1,kind='screener_fixed_basket',market='KR',provider='KIS',
+                  selected_at='2026-11-01T09:30:00+09:00',data_as_of='2026-11-01T09:29:00+09:00',
+                  filters={'exchanges':['KOSPI'],'ranges':[dict(field='per',min=0,max=15)]},
+                  counts=dict(scope=3,evaluable=2,passed=1,failed=1,missing=1),
+                  members=[dict(id='KRX:005930',name='삼성전자',symbol='005930',exchange='KOSPI',
+                                yahoo='005930.KS',price=91_000,currency='KRW',price_label='기준가',
+                                price_source='KIS 마스터',metrics={'per':10},metric_sources={'per':'KIS'})])
+        identity='KRX:005930'
+        self.desk.follow({'symbol':'삼성전자'})
+        self.assertIsNone(self.desk.watchlist()[0]['selection_snapshot'])
+        self.desk.follow({'symbol':identity,'selection_snapshot':snap})
+        changed=deepcopy(snap);changed['members'][0]['price']=95_000
+        self.desk.follow({'symbol':identity,'selection_snapshot':changed})
+        self.desk.update_watch_decision(dict(symbol=identity,thesis='이익 개선',invalidation='영업적자'))
+        self.desk.update_watch_decision(dict(symbol=identity,thesis='새 관점',invalidation='배당 감소'))
+        saved=ResearchDesk(self.store).watchlist()[0]
+        self.assertEqual(saved['selection_snapshot']['members'][0]['price'],91_000)
+        self.assertEqual(saved['first_note']['invalidation'],'영업적자')
+        self.assertEqual(saved['invalidation'],'배당 감소')
+        with self.assertRaises(ValueError):
+            self.desk.follow({'symbol':'NASDAQ:AAPL','selection_snapshot':snap})
+        changed['members'][0]['yahoo']='005930.KQ'
+        with self.assertRaises(ValueError):
+            self.desk.follow({'symbol':identity,'selection_snapshot':changed})
+        self.desk.unfollow(identity)
+        with self.assertRaises(ValueError):
+            self.desk.update_watch_decision(dict(symbol=identity,thesis='수정',invalidation=''))
+        self.desk.follow({'symbol':identity})
+        self.assertIsNone(self.desk.watchlist()[0]['first_note'])
+
     def test_yahoo_only_watchlist_does_not_merge_two_unlisted_symbols(self):
         for s in ('EURUSD=X','GBPUSD=X'):
             self.desk.follow({'symbol':s})

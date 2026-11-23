@@ -36,6 +36,13 @@
 #market-index-plot canvas:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 #market-index-curve { height:144px; }
 #market-index-atr { height:82px; }
+#market-compare-chart { height:144px; }
+#market-compare-note { margin:4px 9px; }
+#market-atr-unit { width:auto; min-height:26px; padding-block:2px; font-size:inherit; }
+.market-index-legend label, #chart-personal-overlay label { display:inline-flex; align-items:center; gap:6px; }
+.market-index-legend input, #chart-personal-overlay input { width:auto; accent-color:var(--accent); }
+.compare-stock { color:#ff9858; }
+.compare-index { color:#80cdd8; }
 #market-index-plot[hidden], #market-index-plot canvas[hidden] { display:none; }
 .market-index-legend { display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 12px; padding:7px 9px 2px; font-size:var(--text-caption); font-variant-numeric:tabular-nums; color:var(--warm); }
 .market-index-legend strong { color:var(--text); }

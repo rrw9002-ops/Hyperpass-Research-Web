@@ -254,11 +254,23 @@
   }
   function inline(parent, text) {
     // Only explicit HTTP(S) markdown links become anchors; arbitrary HTML stays text.
-    const pattern = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
+    const pattern = /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+|#[a-z0-9-]+)\)|\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
     let cursor = 0, match;
     while ((match = pattern.exec(text))) {
       parent.append(document.createTextNode(text.slice(cursor, match.index)));
-      if (match[1]) {
+      if (match[1] && match[2].startsWith("#")) {
+        const key = match[2].slice(1);
+        const artifact = state.run?.artifacts?.find(item => item.id === key && item.state === "accepted");
+        if (artifact) {
+          const link = el("a", "", match[1]); link.href = "#artifact-" + key;
+          link.addEventListener("click", event => {
+            event.preventDefault(); selectTab("evidence");
+            const card = document.getElementById("artifact-" + key);
+            if (card) { card.open = true; card.querySelector("summary").focus(); card.scrollIntoView({block:"nearest"}); }
+          });
+          parent.append(link);
+        } else parent.append(document.createTextNode(match[1]));
+      } else if (match[1]) {
         try { const url = new URL(match[2]); if (!["http:", "https:"].includes(url.protocol)) throw new Error(); const a = el("a", "", match[1]); a.href = url.href; a.target = "_blank"; a.rel = "noopener noreferrer"; parent.append(a); }
         catch { parent.append(document.createTextNode(match[0])); }
       } else if (match[3]) parent.append(el("strong", "", match[3]));
@@ -293,6 +305,7 @@
     if (!artifacts.length) { $("artifacts").append(el("p", "muted", "역할별 분석이 완료되면 근거와 보고서가 여기에 표시됩니다.")); return; }
     for (const artifact of artifacts) {
       const card = el("details", "artifact-card"), summary = el("summary");
+      card.id = "artifact-" + artifact.id;
       summary.append(el("strong", "", roleName(artifact.role)), el("small", "", `${artifact.version ? `v${artifact.version} · ` : ""}${friendlyStatus(artifact.state || artifact.status || artifact.handoff_state || "pending")}`));
       const body = el("div", "artifact-body"), meta = el("div", "artifact-meta", [artifact.id || artifact.artifact_id, artifact.created_at ? timeLabel(artifact.created_at) : "", artifact.evidence_readiness ? `근거 준비도: ${artifact.evidence_readiness}` : "", artifact.model ? (state.run?.mode==="demo"?"고정 샘플":`${AI_NAMES[artifact.provider] || artifact.provider || "AI"} · ${artifact.model}`) : "", artifact.reasoning && artifact.reasoning !== "default" ? `추론: ${artifact.reasoning}` : ""].filter(Boolean).join(" · "));
       body.append(meta); const content = el("div", "report-content"); markdown(content, artifact.report || artifact.content || artifact.text || artifact.markdown || artifact); body.append(content);
@@ -326,6 +339,12 @@
     const content = $("report-content");
     if (run.report) markdown(content, run.report);
     else { content.replaceChildren(); const box = el("div", "progress-report"); const h = el("h3"); if (active) h.append(el("span", "pulse")); h.append(document.createTextNode(active ? "팀이 근거를 검토하고 있습니다." : friendlyStatus(run.status))); box.append(h, el("p", "", run.error || (active ? "역할별 근거와 진행 기록 탭에서 현재 작업을 확인할 수 있습니다. 이 창을 닫아도 서버가 실행 중이면 작업은 계속됩니다." : "완료된 통합 보고서가 없습니다. 진행 기록과 역할별 근거를 확인하세요."))); content.append(box); }
+    if (run.chart_id && run.report) {
+      const chartLink = el("button", "button ghost compact", "분석에 사용한 저장 차트 열기");
+      chartLink.type = "button";
+      chartLink.addEventListener("click", () => window.HyperpassApp.openChart(run.chart_id).catch(err => error(err.message)));
+      content.append(chartLink);
+    }
     if (run.status !== "completed" && run.report) content.prepend(el("p", "incomplete-notice", "최종 보고서가 아닙니다. 이 실행은 완료되지 않았으며 아래는 저장된 중간 기록입니다."));
     if (run.mode === "demo") { const note = el("p", "sample-notice", "화면 체험용 고정 샘플입니다. AI 분석이나 실시간 데이터 조회 결과가 아닙니다."); content.prepend(note); }
     if (run.error && run.report) content.prepend(el("p", "sample-notice", run.error));
@@ -452,7 +471,23 @@
       beginChartQuestion(symbol,`${symbol || "TradingView"}의 실제 TradingView 백테스트 결과를 기술 분석해줘. 전략 규칙, 거래 횟수, 비용과 낙폭, 데이터 범위와 과최적화 가능성을 구분하고 추가 검증이 필요한 점을 정리해줘.`,null,{id,symbol:symbol || "TradingView"});
     },
     openChart:async id=>{selectWorkspace('chart');await window.HyperpassChart?.open(id);},
-    useChart:chart=>beginChartQuestion(chart.symbol,`${chart.symbol}의 저장된 차트·백테스트를 기술 분석해줘. 지표와 진입·청산 규칙, 비용, 미실현 손익, 표본 밖 검증 결과와 데이터 한계를 구분하고 과최적화 가능성을 검토해줘. 수익 보장이나 매매 지시는 하지 마.`,chart,null),
+    useChart:chart=>beginChartQuestion(chart.symbol,`${chart.symbol}의 저장된 차트·백테스트를 기술 분석해줘. ${chart.evidence_summary?.personal_indicator ? '첨부한 개인 지표의 관측값과 관측일을 인용하고, 고점이 있다면 고점일과 확정일을 구분해줘. ' : ''}지표와 진입·청산 규칙, 비용, 미실현 손익, 표본 밖 검증 결과와 데이터 한계를 구분하고 과최적화 가능성을 검토해줘. 수익 보장이나 매매 지시는 하지 마.`,chart,null),
+    reviewWatch:async(item,evidence,decision)=>{
+      if(isActive(state.run))throw new Error("진행 중인 분석이 끝난 뒤 관심종목을 다시 검토하세요.");
+      let previous="";
+      if(item.run_id){
+        const run=await api("/api/runs/"+encodeURIComponent(item.run_id));
+        if(run.mode!=="demo"&&run.status==="completed")previous="\n\n연결된 이전 연구 "+run.id+" · "+run.created_at+"\n"+run.question+"\n"+run.report;
+      }
+      if(isActive(state.run))throw new Error("진행 중인 분석이 끝난 뒤 관심종목을 다시 검토하세요.");
+      newRun();state.category="stock";renderCategories();$("target-role").value="";targetHint();
+      $("symbol").value=item.yahoo||item.symbol;$("symbol").dispatchEvent(new Event("input"));
+      $("evidence").value=evidence;$("memory").value=(decision+previous).slice(0,10000);
+      $("evidence").closest("details").open=true;
+      $("question").value=item.name+"의 관심종목 선정 가설을 다시 검토해줘. 선정 당시 조건, 이후 관측값, 반증 조건을 대조하고 새로 확인한 공시는 출처와 날짜를 밝혀줘. 확인할 수 없는 항목은 미확인으로 남겨줘.";
+      $("form-feedback").textContent="선정 당시 자료와 최근 수신 가격을 연결했습니다. 자료·AI를 확인하고 리서치를 시작하세요.";
+      $("question").focus();
+    },
     useMemory:async id=>{if(isActive(state.run)){error('분석 완료 후 이전 기록을 연결하세요.');return;}const run=await api('/api/runs/'+encodeURIComponent(id));if(run.mode==='demo'||run.status!=='completed'){error('완료된 실제 연구만 이전 판단으로 연결할 수 있습니다.');return;}selectWorkspace('research');$('memory').value=`이전 연구 ${run.id} (${run.created_at})\n${run.question}\n${run.report}`.slice(0,10000);$('memory').closest('details').open=true;$('form-feedback').textContent='이전 연구를 참고할 기억으로 연결했습니다. 현재 자료와 구분해 검토합니다.';}
   };
   for(const button of document.querySelectorAll('[data-workspace]'))button.addEventListener('click',()=>selectWorkspace(button.dataset.workspace));

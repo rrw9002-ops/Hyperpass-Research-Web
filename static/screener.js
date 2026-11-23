@@ -4,7 +4,7 @@
   const columns={price:'현재가',market_cap:'시가총액',turnover:'추정 거래대금',per:'PER',pbr:'PBR',roe:'ROE (%)',margin:'영업이익률 (%)',debt:'부채/자본 (배)',volume:'거래량',income:'순이익',price_time:'시세 시각 (KST)',quote_received_at:'종목 수신 시각 (KST)',delay_minutes:'표시 지연 (분)',price_date:'가격 기준일',fiscal_date:'재무 기준일'};
   const numeric=Object.keys(columns).filter(k=>!['price_date','price_time','quote_received_at','delay_minutes','fiscal_date'].includes(k));
   let data,market='KR',sort='market_cap',asc=false,page=0,version=0;
-  let filtered=[],chosen=new Map(),shown=new Set(['price','market_cap','turnover','per','pbr','roe']);
+  let applied=null, filtered=[],chosen=new Map(),shown=new Set(['price','market_cap','turnover','per','pbr','roe']);
   const size=40,$=id=>document.getElementById('sc-'+id);
   function node(tag,content,cls){const el=document.createElement(tag);if(content!=null)el.textContent=content;if(cls)el.className=cls;return el}
   function button(label,fn){const b=node('button',label,'button ghost compact');b.type='button';b.onclick=fn;return b}
@@ -19,7 +19,7 @@
   <div class="sc-actions"><button type="button" id="sc-reset" class="button ghost">초기화</button><button class="button primary" id="sc-search">검색하기</button></div></form>
   <div class="sc-output"><section class="panel"><div class="panel-heading"><div><span class="section-kicker"><span id="sc-provider">시세 제공자</span></span><h2>검색 결과 <span id="sc-count"></span></h2></div><button type="button" id="sc-refresh" class="button ghost compact">공급자에서 새로 조회</button></div>
   <p id="sc-status" role="status" class="feedback"></p><p id="sc-date" class="small-muted"></p>
-  <p id="sc-notes" class="small-muted"></p><details class="sc-coverage"><summary>항목별 출처와 제공 종목 수</summary><ul id="sc-fields"></ul></details><div class="sc-actions"><button id="sc-connect" class="button ghost compact" hidden>KIS 연결 설정</button><button id="sc-page-quotes" class="button ghost compact" hidden>이 페이지 KIS 상세 시세·PER 갱신</button><button id="sc-compare" class="button ghost compact">선택 비교</button><button id="sc-backtest" class="button ghost compact">선택 종목 백테스트</button><button id="sc-csv" class="button ghost compact">CSV 다운로드</button>
+  <div id="sc-funnel" aria-live="polite"></div><details id="sc-missing" class="sc-coverage" hidden><summary>자료 부족 사유와 기준일</summary><ul id="sc-missing-fields"></ul></details><p id="sc-notes" class="small-muted"></p><details class="sc-coverage"><summary>항목별 출처와 제공 종목 수</summary><ul id="sc-fields"></ul></details><div class="sc-actions"><button id="sc-connect" class="button ghost compact" hidden>KIS 연결 설정</button><button id="sc-page-quotes" class="button ghost compact" hidden>이 페이지 KIS 상세 시세·PER 갱신</button><button id="sc-compare" class="button ghost compact">선택 비교</button><button id="sc-backtest" class="button ghost compact">선택 종목 백테스트</button><button id="sc-csv" class="button ghost compact">통과 종목 CSV</button><button id="sc-audit" class="button ghost compact">판정 내역 CSV</button>
   <details><summary>표시할 열</summary><div id="sc-cols" class="sc-checks"></div></details></div>
   <div class="sc-scroll"><table><thead id="sc-head"></thead><tbody id="sc-rows"></tbody></table></div><div class="sc-pages"><button id="sc-prev" class="button ghost compact">이전</button><span id="sc-page"></span><button id="sc-next" class="button ghost compact">다음</button></div></section>
   <section class="panel" id="sc-detail" hidden><div class="panel-heading"><h2>종목 비교</h2><button id="sc-close" class="button ghost compact">닫기</button></div><div id="sc-matrix" class="sc-scroll"></div></section></div></div>`;
@@ -45,9 +45,62 @@
     if(!data)return;
     const ranges=[];
     for(const row of $('ranges').children){const [sel,lo,hi]=row.children;if(!lo.checkValidity()||!hi.checkValidity()){message('숫자 범위를 확인하세요.');return}const min=lo.value===''?null:Number(lo.value),max=hi.value===''?null:Number(hi.value);if(min!=null&&max!=null&&min>max){message('최솟값이 최댓값보다 큽니다.');return}if(min!=null||max!=null)ranges.push([sel.value,min,max])}
-    const venues=new Set([...$('venues').querySelectorAll(':checked')].map(o=>o.value)),q=$('query').value.trim().toLocaleLowerCase();
-    filtered=data.rows.filter(r=>venues.has(r.exchange)&&(!$('sector').value||r.sector===$('sector').value)&&(!$('industry').value||r.industry===$('industry').value)&&(!q||[r.name,r.symbol,r.yahoo,r.id,r.aliases||''].some(v=>String(v).toLocaleLowerCase().includes(q)))&&ranges.every(([k,lo,hi])=>r[k]!=null&&(lo==null||r[k]>=lo)&&(hi==null||r[k]<=hi)));
-    page=0;sortRows();const missing=ranges.filter(([k])=>!data.rows.some(r=>r[k]!=null));message([data.warning,missing.length?'이번 자료에 '+missing.map(([k])=>columns[k]).join(', ')+' 관측값이 없습니다. 항목별 출처와 제공 종목 수를 확인하세요.':''].filter(Boolean).join(' '));render();
+    const exchanges=[...$('venues').querySelectorAll(':checked')].map(o=>o.value);
+    const query=$('query').value.trim(),sector=$('sector').value,industry=$('industry').value;
+    const filters={exchanges,sector,industry,query,ranges:ranges.map(([field,min,max])=>({field,min,max}))};
+    const scoped=data.rows.filter(r=>exchanges.includes(r.exchange)&&(!sector||r.sector===sector)&&(!industry||r.industry===industry)&&
+      (!query||[r.name,r.symbol,r.yahoo,r.id,r.aliases].some(v=>String(v||'').toLocaleLowerCase().includes(query.toLocaleLowerCase()))));
+    const gaps=new Map(),decisions=[], tests=[...new Set(ranges.map(([k])=>k))];
+    filtered=[];let missing=0;
+    for(const row of scoped){
+      const absent=tests.filter(k=>!Number.isFinite(row[k]));
+      const outside=ranges.filter(([k,lo,hi])=>Number.isFinite(row[k])&&((lo!=null&&row[k]<lo)||(hi!=null&&row[k]>hi))).map(([k])=>k);
+      const status=absent.length?'자료 부족':outside.length?'조건 탈락':'통과';
+      decisions.push({row,status,absent,outside});
+      if(absent.length){missing++;for(const field of absent)gaps.set(field,(gaps.get(field)||0)+1)}
+      else if(!outside.length)filtered.push(row);
+    }
+    const evaluable=scoped.length-missing;
+    applied={filters,counts:{scope:scoped.length,evaluable,passed:filtered.length,failed:evaluable-filtered.length,missing},gaps,decisions};
+    const available=new Map(filtered.map(row=>[row.id,row]));
+    chosen=new Map([...chosen.keys()].filter(id=>available.has(id)).map(id=>[id,available.get(id)]));
+    page=0;sortRows();message(data.warning||'');renderCoverage();render();if(!$('detail').hidden)compare();
+  }
+  const countLabels={scope:'대상',evaluable:'평가 가능',passed:'통과',failed:'조건 탈락',missing:'자료 부족'};
+  function filterText(filters,labels=columns){
+    return [filters.exchanges.join(' · ')||'선택한 거래소 없음',filters.sector,filters.industry,filters.query&&'검색어 '+filters.query,
+      ...filters.ranges.map(({field,min,max})=>labels[field]+' '+(min??'하한 없음')+' ~ '+(max??'상한 없음'))].filter(Boolean).join(' / ');
+  }
+  window.HyperpassScreenFilters={format:filterText,labels:columns};
+  function gapReason(field,n){
+    const note=(data.field_notes||data.field_sources||{})[field];
+    return labelFor(field)+' 미제공 '+n.toLocaleString('ko-KR')+'종목 · '+data.source+
+      (note?' · '+note:'')+(data.supplement?' · TradingView 보강 후에도 값 없음':'')+
+      ' · 누락값의 관측일 미제공 · 자료 수신 '+dateText(data.as_of);
+  }
+  function renderCoverage(){
+    const host=$('funnel');host.replaceChildren();$('missing-fields').replaceChildren();$('missing').hidden=!applied?.gaps.size;
+    if(!applied)return;
+    for(const [key,label] of Object.entries(countLabels)){
+      const box=node('div');box.append(node('small',label),node('strong',applied.counts[key].toLocaleString('ko-KR')));host.append(box);
+    }
+    for(const [field,n] of applied.gaps)$('missing-fields').append(node('li',gapReason(field,n)));
+    if(applied.gaps.size>1)$('missing-fields').append(node('li','여러 지표가 비어 있는 종목은 사유별로 중복 집계합니다. 자료 부족 종목 수는 중복을 제외합니다.'));
+  }
+  function metricSource(row,field){
+    return row.supplement_fields?.includes(field)?'TradingView':(data.field_notes||data.field_sources||{})[field]||data.source;
+  }
+  function selectionSnapshot(rows){
+    const ranges=applied.filters.ranges;
+    return {version:1,kind:'screener_fixed_basket',market,selected_at:new Date().toISOString(),data_as_of:data.as_of,
+      provider:data.source,filters:applied.filters,counts:applied.counts,members:rows.map(r=>({
+        id:r.id,yahoo:r.yahoo,exchange:r.exchange,symbol:r.symbol,name:r.name,price:r.price??null,currency:r.currency,
+        price_label:r.quote_mode==='master'?'기준가':market==='US'?'정규장 가격':labelFor('price'),price_source:r.quote_source||data.source,
+        price_as_of:r.price_time||r.price_date||'',price_received_at:r.quote_received_at||'',master_at:r.master_at||'',
+        fiscal_date:r.fiscal_date||'',supplement_fiscal_date:r.supplement_fiscal_date||'',
+        metrics:Object.fromEntries(ranges.map(({field})=>[field,r[field]])),metric_sources:Object.fromEntries(ranges.map(({field})=>
+          [field,metricSource(r,field)]))
+      }))};
   }
   function header(tr,key,label){const th=node('th');if(key){if(sort===key)th.setAttribute('aria-sort',asc?'ascending':'descending');th.append(button(label+(sort===key?(asc?' ↑':' ↓'):''),()=>{asc=sort===key?!asc:key==='name'||key==='industry';sort=key;sortRows();page=0;render()}))}else th.textContent=label;tr.append(th)}
   function updateSelection(){$('compare').textContent=`선택 비교 (${chosen.size})`;$('compare').disabled=!chosen.size;$('backtest').disabled=!chosen.size}
@@ -58,14 +111,41 @@
       const tr=node('tr'),c=node('td');check(c,'',r.id,chosen.has(r.id),ev=>{if(ev.target.checked){if(chosen.size>=6){ev.target.checked=false;message('한 번에 최대 6개 종목을 비교할 수 있습니다.');return}chosen.set(r.id,r)}else chosen.delete(r.id);updateSelection();if(!$('detail').hidden)compare()}).setAttribute('aria-label',r.name+' 비교 선택');tr.append(c);
       const id=node('td');id.append(node('strong',r.name),node('small',`${r.symbol} · ${r.exchange}`));tr.append(id,node('td',r.industry||'—'));
       for(const k of shown)tr.append(node('td',amount(k,r)));
-      const actions=node('td');actions.append(button('차트',()=>window.HyperpassChart.openSymbol(r.yahoo)),button('관심 +',async()=>{try{await window.HyperpassApp.api('/api/watchlist',{method:'POST',body:{symbol:r.id}});message(`${r.name}을 관심종목에 저장했습니다.`)}catch(e){message(e.message)}}));tr.append(actions);$('rows').append(tr);
+      const actions=node('td');actions.append(button('차트',()=>window.HyperpassChart.openSymbol(r.yahoo)),button('관심 +',async()=>{try{await window.HyperpassApp.api('/api/watchlist',{method:'POST',body:{symbol:r.id,selection_snapshot:selectionSnapshot([r])}});message(`${r.name}을 관심종목에 저장했습니다.`)}catch(e){message(e.message)}}));tr.append(actions);$('rows').append(tr);
     }
-    $('count').textContent=filtered.length.toLocaleString('ko-KR')+' 종목';$('page').textContent=`${filtered.length?page+1:0} / ${Math.ceil(filtered.length/size)}`;$('prev').disabled=!page;$('next').disabled=(page+1)*size>=filtered.length;$('csv').disabled=!filtered.length;updateSelection();
+    $('count').textContent=filtered.length.toLocaleString('ko-KR')+' 종목';$('page').textContent=`${filtered.length?page+1:0} / ${Math.ceil(filtered.length/size)}`;$('prev').disabled=!page;$('next').disabled=(page+1)*size>=filtered.length;$('csv').disabled=!applied;$('audit').disabled=!applied;updateSelection();
     if(data&&!filtered.length){const td=node('td','조건에 맞는 종목이 없습니다.');td.colSpan=shown.size+4;const tr=node('tr');tr.append(td);$('rows').append(tr)}
   }
   function compare(){if(!chosen.size){$('detail').hidden=true;return}const t=node('table'),head=node('tr');head.append(node('th','항목'));const rows=[...chosen.values()];for(const r of rows)head.append(node('th',`${r.name} · ${r.symbol}`));t.append(head);for(const [k,label] of Object.entries(columns)){const tr=node('tr');tr.append(node('th',labelFor(k)));for(const r of rows)tr.append(node('td',amount(k,r)));t.append(tr)}$('matrix').replaceChildren(t);$('detail').hidden=false}
-  function csv(){const keys=['name','symbol','exchange','sector','industry','currency','income_currency','provider','as_of','row_quote_source','row_received','row_price_time','supplement_fields','supplement_fiscal_date',...shown],labels=['종목명','티커','거래소','섹터','업종','통화','재무 통화','시세 제공자','전체 조회 시각','종목별 가격 출처','종목별 수신 시각','공급자 시세 시각','TradingView 보강 항목','보강 재무 기준일',...[...shown].map(k=>labelFor(k))];const escape=v=>{let s=String(v??'');if(typeof v==='string'&&/^[\t\r\n ]*[=+\-@]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"'};
-    const blob=new Blob(['\uFEFF'+[labels,...filtered.map(r=>keys.map(k=>k==='provider'?data.source:k==='as_of'?data.as_of:k==='row_quote_source'?r.quote_source:k==='row_received'?r.quote_received_at:k==='row_price_time'?r.price_time:k==='supplement_fields'?(r.supplement_fields||[]).join('|'):k==='symbol'&&/^\d+$/.test(r.symbol)?r.id:r[k]))].map(row=>row.map(escape).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob),a=node('a');a.href=url;a.download=`Hyperpass-${market}-${data.as_of.slice(0,10)}.csv`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  function csv(audit=false){
+    const metricKeys=[...new Set([...shown,...applied.filters.ranges.map(({field})=>field)])];
+    const labels=['종목명','티커','거래소','섹터','업종','통화','재무 통화','시세 제공자','전체 조회 시각','종목별 가격 출처',
+      '종목별 수신 시각','공급자 시세 시각','TradingView 보강 항목','보강 재무 기준일',...metricKeys.map(k=>labelFor(k)),
+      '행 유형','적용 조건',...Object.values(countLabels),'누락 사유·출처·기준일','상장 목록 수','공급자 수신 종목 수'];
+    const meta=[filterText(applied.filters),...Object.keys(countLabels).map(k=>applied.counts[k]),
+      [...applied.gaps].map(([field,n])=>gapReason(field,n)).join(' / '),data.listed_count,data.rows.length];
+    const fields=[...new Set(applied.filters.ranges.map(({field})=>field))];
+    if(audit)labels.push('판정','자료 부족 지표','범위 이탈 지표','종목 가격 기준일','종목 재무 기준일','마스터 게시일','적용 지표 출처');
+    const result=audit?applied.decisions:filtered.map(row=>({row,status:'통과',absent:[],outside:[]}));
+    const csvRows=result.length?result:[{row:null,status:'검색 요약',absent:[],outside:[]}];
+    const body=csvRows.map(({row:r,status,absent,outside})=>{
+      const id=r&&/^\d+$/.test(r.symbol)?r.id:r?.symbol;
+      const cells=[r?.name,id,r?.exchange,r?.sector,r?.industry,r?.currency,r?.income_currency,data.source,data.as_of,r?.quote_source,
+        r?.quote_received_at,r?.price_time,(r?.supplement_fields||[]).join('|'),r?.supplement_fiscal_date,...metricKeys.map(k=>r?.[k]),
+        !r?'검색 요약':audit?'판정 종목':'통과 종목',...meta];
+      if(audit)cells.push(status,absent.map(k=>columns[k]).join(' / '),outside.map(k=>columns[k]).join(' / '),
+        r?.price_date,r?.fiscal_date,r?.master_at,r?fields.map(k=>columns[k]+' · '+metricSource(r,k)).join(' / '):'');
+      return cells;
+    });
+    const escape=value=>{
+      let cell=String(value??'');
+      if(typeof value==='string'&&/^[\t\r\n ]*[=+\-@]/.test(cell))cell="'"+cell;
+      return '"'+cell.replaceAll('"','""')+'"';
+    };
+    const blob=new Blob(['\uFEFF'+[labels,...body].map(row=>row.map(escape).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+    const url=URL.createObjectURL(blob),a=node('a');a.href=url;
+    a.download='Hyperpass-'+market+'-'+(audit?'판정내역-':'')+data.as_of.slice(0,10)+'.csv';
+    a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
 
   function dateText(value){
@@ -81,7 +161,7 @@
     $('provider').textContent=data.source||providerName();
     $('date').textContent=[data.cache_status==='stale'?'마지막 성공 자료':data.cache_status==='cached'?'최근 조회 자료':'공급자 조회 완료',
       '앱 수신 '+dateText(data.as_of),data.master_at?'KIS 마스터 게시 '+dateText(data.master_at):null,latest?'가장 최근 가격 기준일 '+latest:null,
-      '목록 '+data.listed_count.toLocaleString('ko-KR')+'종목 · 가격 있음 '+priceCount.toLocaleString('ko-KR')+'종목'].filter(Boolean).join(' · ');
+      '상장 목록 '+data.listed_count.toLocaleString('ko-KR')+'종목 · 수신 '+data.rows.length.toLocaleString('ko-KR')+'종목 · 가격 있음 '+priceCount.toLocaleString('ko-KR')+'종목', '아래 대상은 수신 종목에 거래소·섹터·업종·검색어를 적용한 수입니다.'].filter(Boolean).join(' · ');
     const notes=[data.note,...(data.warnings||[]), data.supplement?'추가 재무 지표를 받은 종목 '+data.supplement_count+'개. 별표(*) 값의 출처는 TradingView입니다.':null];
     $('notes').textContent=notes.filter(Boolean).join(' ');
     $('fields').replaceChildren();
@@ -112,7 +192,7 @@
     const request=++version;market=$('market').value;
     const sameMarket=data?.market===market;
     const selectedVenues=sameMarket?new Set([...$('venues').querySelectorAll(':checked')].map(el=>el.value)):null;
-    if(!sameMarket){data=null;chosen.clear();filtered=[];page=0;$('detail').hidden=true;$('venues').replaceChildren();choices($('sector'),[]);industries();$('date').textContent='';$('notes').textContent='';$('fields').replaceChildren();render()}
+    if(!sameMarket){data=null;applied=null;renderCoverage();chosen.clear();filtered=[];page=0;$('detail').hidden=true;$('venues').replaceChildren();choices($('sector'),[]);industries();$('date').textContent='';$('notes').textContent='';$('fields').replaceChildren();render()}
     $('extras').hidden=market!=='KR';$('connect').hidden=market!=='KR'||sameMarket&&data.quote_mode==='api';$('page-quotes').hidden=true;
     $('provider').textContent=providerName();message(providerName()+'에서 목록과 가격을 조회하는 중입니다…');
     $('search').disabled=true;$('refresh').disabled=true;
@@ -155,7 +235,7 @@
   $('reset').onclick=()=>{$('ranges').replaceChildren();$('query').value='';$('sector').value='';industries();$('industry').value='';for(const el of $('venues').querySelectorAll('input'))el.checked=true;apply()};
   $('market').onchange=()=>{$('ranges').replaceChildren();$('query').value='';load()};$('refresh').onclick=()=>load(true);$('extra').onchange=()=>load();$('page-quotes').onclick=updatePage;$('connect').onclick=()=>document.getElementById('sources-button').click();
   document.addEventListener('hyperpass:source-changed',e=>{if(e.detail==='kis'&&market==='KR'&&!root.hidden)load(true)});$('prev').onclick=()=>{if(page>0){page--;render()}};$('next').onclick=()=>{if((page+1)*size<filtered.length){page++;render()}};
-  $('csv').onclick=csv;$('compare').onclick=()=>{compare();$('detail').scrollIntoView({block:'nearest'})};$('close').onclick=()=>{$('detail').hidden=true};
-  $('backtest').onclick=()=>window.HyperpassBacktest.openSymbols({market,symbols:[...chosen.values()].map(r=>r.id)});
+  $('csv').onclick=()=>csv();$('audit').onclick=()=>csv(true);$('compare').onclick=()=>{compare();$('detail').scrollIntoView({block:'nearest'})};$('close').onclick=()=>{$('detail').hidden=true};
+  $('backtest').onclick=()=>window.HyperpassBacktest.openSymbols({market,symbols:[...chosen.keys()],selection_snapshot:selectionSnapshot([...chosen.values()])});
   document.addEventListener('hyperpass:workspace-change',e=>{if(e.detail.name==='screener'&&!version)load()});
 })();

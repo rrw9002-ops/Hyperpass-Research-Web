@@ -59,6 +59,76 @@
     } else host.append(make("small","저장된 시세가 없습니다."));
     if(problems.has(item.symbol)) host.append(document.createElement("br"),make("small",problems.get(item.symbol)));
   }
+  function timeLabel(value) {
+    if(!value)return "미제공";
+    if(value.length===10)return value;
+    return new Date(value).toLocaleString("ko-KR",{timeZone:"Asia/Seoul",hour12:false})+" KST";
+  }
+  function marketDay(value,region) {
+    if(!value||value.length===10)return value||"";
+    return new Intl.DateTimeFormat("en-CA",{timeZone:region==="KR"?"Asia/Seoul":"America/New_York",
+      year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(value));
+  }
+  function priceText(price,currency) {
+    return Number.isFinite(price)?price.toLocaleString("ko-KR",{maximumFractionDigits:4})+" "+(currency||""):"미제공";
+  }
+  function reviewLines(item) {
+    const snapshot=item.selection_snapshot,q=item.quote,member=snapshot?.members[0];
+    const earlier=[],recent=[],decision=[];
+    if(member){
+      earlier.push("선정 "+timeLabel(snapshot.selected_at)+" · "+snapshot.provider,
+        member.price_label+" "+priceText(member.price,member.currency)+" · "+member.price_source,
+        "가격 관측 "+timeLabel(member.price_as_of)+" · 스크리너 수신 "+timeLabel(snapshot.data_as_of));
+      if(member.price_received_at)earlier.push("종목 시세 수신 "+timeLabel(member.price_received_at));
+      if(member.master_at)earlier.push("상장 마스터 게시 "+timeLabel(member.master_at));
+      earlier.push("적용 조건 · "+window.HyperpassScreenFilters.format(snapshot.filters));
+      for(const [field,value] of Object.entries(member.metrics||{}))
+        earlier.push(window.HyperpassScreenFilters.labels[field]+" "+value+" · "+member.metric_sources[field]);
+      if(snapshot.filters.ranges.length)earlier.push("재무 기준일 "+timeLabel(member.fiscal_date)+(member.supplement_fiscal_date?" · 보강 재무 기준일 "+timeLabel(member.supplement_fiscal_date):""));
+    }else earlier.push("스크리너 선정 기록 없음 · 관심 등록 "+timeLabel(item.added_at));
+    if(q){
+      recent.push("Yahoo Finance 일봉 종가 "+priceText(q.price,q.currency)+" · 봉 기준 "+timeLabel(q.as_of)+" · 수신 "+timeLabel(q.retrieved_at));
+      if(member && q.currency===member.currency && ["KRW","USD"].includes(q.currency) && member.price>0 && q.price>0){
+        if(marketDay(q.as_of,snapshot.market)>marketDay(snapshot.selected_at,snapshot.market)){
+          const pct=(q.price/member.price-1)*100;
+          recent.push("선정 가격 대비 "+(pct>0?"+":"")+pct.toFixed(2)+"% · 가격 차이만 계산 (배당·비용 제외)");
+        }else recent.push("선정일 이후의 새 일봉을 기다리는 중");
+      }else if(member)recent.push("동일 통화의 유효한 선정 가격이 필요합니다.");
+    }else recent.push("최근 가격 미수신");
+    recent.push("선정 이후 공시 · 미확인");
+    if(item.first_note && (item.first_note.thesis!==item.thesis||item.first_note.invalidation!==item.invalidation)){
+      decision.push("최초 판단 "+timeLabel(item.first_note.updated_at)+" · "+(item.first_note.thesis||"미작성"),
+                    "최초 반증 조건 · "+(item.first_note.invalidation||"미작성"));
+    }
+    decision.push("선정 가설 · "+(item.thesis||"미작성"),"반증 조건 · "+(item.invalidation||"미작성"));
+    if(item.decision_updated_at)decision.push("판단 기록 "+timeLabel(item.decision_updated_at));
+    return {earlier,recent,decision};
+  }
+  function decisionPanel(item,lines){
+    const area=make("details","");area.className="watch-history";
+    area.append(make("summary","선정 근거와 최근 관측 비교"));
+    for(const [label,group] of [["선정 시점",lines.earlier],["최근 관측",lines.recent],["내 판단",lines.decision]]){
+      const section=make("section","");section.append(make("strong",label));
+      for(const line of group)section.append(make("p",line));
+      area.append(section);
+    }
+    return area;
+  }
+  let editing=null;
+  function editNote(item){
+    editing=item.symbol;$("watch-note-symbol").textContent=item.name+" · "+item.symbol;
+    $("watch-thesis").value=item.thesis||"";$("watch-invalidation").value=item.invalidation||"";
+    $("watch-note-message").textContent="";$("watch-note-dialog").showModal();$("watch-thesis").focus();
+  }
+  $("watch-note-close").onclick=()=>$("watch-note-dialog").close();
+  $("watch-note-form").onsubmit=async event=>{
+    event.preventDefault();const submit=event.submitter||$("watch-note-form").querySelector("[type=submit]");
+    if(submit.disabled)return;submit.disabled=true;
+    try{await api("/api/watchlist/decision",{symbol:editing,thesis:$("watch-thesis").value,invalidation:$("watch-invalidation").value});
+      $("watch-note-dialog").close();await load();}
+    catch(e){$("watch-note-message").textContent=e.message;}
+    finally{submit.disabled=false;}
+  };
   function render() {
     $("watch-count").textContent=String(records.length);
     const host=$("watch-items"); host.replaceChildren();
@@ -72,11 +142,17 @@
       }));
       if(item.run_id) actions.append(button("분석 보고서",()=>window.HyperpassApp.openRun(item.run_id)));
       if(item.chart_id) actions.append(button("저장한 차트",()=>window.HyperpassApp.openChart(item.chart_id)));
+      const lines=reviewLines(item);
+      actions.append(button("판단 기록",()=>editNote(item)),button("이전 판단 다시 검토",async()=>{
+        const evidence=["관심종목 "+item.name+" · "+item.symbol,"[선정 시점]",...lines.earlier,"[최근 관측]",...lines.recent].join("\n");
+        try{await window.HyperpassApp.reviewWatch(item,evidence,lines.decision.join("\n"));}
+        catch(e){$("watch-feedback").textContent=e.message;}
+      }));
       actions.append(button("목록에서 빼기",async()=>{
         try{await api("/api/watchlist/remove",{symbol:item.symbol});records=records.filter(r=>r.symbol!==item.symbol);render();}
         catch(e){$("watch-feedback").textContent=e.message;}
       }));
-      card.append(make("h3",item.name),make("small",item.symbol),price,actions);host.append(card);
+      card.append(make("h3",item.name),make("small",item.symbol),price,decisionPanel(item,lines),actions);host.append(card);
     }
   }
   async function load() {

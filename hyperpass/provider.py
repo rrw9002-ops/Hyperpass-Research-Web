@@ -135,7 +135,12 @@ class DemoProvider:
     """Explicit scripted walkthrough; never used as recovery for live errors."""
     mode = "demo"
     model = "scripted-demo"
-    CONCLUSION = "가상 자료의 매출·영업이익 개선만으로 지속 가능한 사업 품질 개선을 확정할 수 없습니다. 현금 전환, 채권 회수와 고객 집중도를 추가 확인해야 합니다."
+    SUMMARY = "가상 자료의 매출·영업이익 개선만으로 지속 가능한 사업 품질 개선을 확정할 수 없습니다. 현금 전환, 채권 회수와 고객 집중도를 추가 확인해야 합니다."
+
+    CONCLUSION = ("## 관측 사실\n- 제공된 가상 자료에 이익 개선과 현금 전환 약화가 함께 나타납니다. "
+                  "[[fundamental-analyst-v1|undated]]\n\n## 해석\n- " + SUMMARY +
+                  "\n\n## 판단을 바꿀 조건\n- 매출채권 회수와 영업현금흐름 개선이 함께 확인되면 사업 품질 판단을 다시 검토합니다."
+                  "\n\n## 다음 확인 날짜 및 자료\n- 날짜 미정 · 다음 감사보고서에서 영업현금흐름과 매출채권 회수 내역을 대조합니다.")
 
     def check(self):
         return {"ok": True, "model": self.model, "message": "API를 사용하지 않는 고정 예제입니다."}
@@ -158,7 +163,7 @@ class DemoProvider:
             data = {"report": ("## 고정 데모 · AI 분석 아님\n\n" +
                                 ("독립 검토 예제: 제한된 결론을 유지합니다. 경영진 주장과 시점 없는 가격은 확정 근거가 아닙니다." if reviewing else
                                  "제공된 가상 자료에 이익 개선과 현금 전환 약화가 함께 나타납니다. 실제 기업이나 현재 시장을 분석한 결과가 아닙니다.")),
-                    "summary": self.CONCLUSION, "evidence_readiness": "screen",
+                    "summary": self.SUMMARY, "evidence_readiness": "screen",
                     "missing_evidence": ["감사자료", "채권 회수 내역", "고객 계약"],
                     "follow_up_requests": [], "review_verdict": "accept" if reviewing else "not_applicable"}
         return {"text": json.dumps(data, ensure_ascii=False), "data": data, "citations": [],

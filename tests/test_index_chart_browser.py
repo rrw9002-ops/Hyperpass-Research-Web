@@ -27,14 +27,18 @@ class MarketIndexBrowserTest(unittest.TestCase):
             def prices(symbol, period, interval):
                 if symbol == "005930.KS":
                     from test_chart_lab import packet
-                    return dict(packet(range(100, 185)), symbol=symbol, provider="yahoo",
-                                currency="KRW", timeframe="1d")
+                    data = packet([200 + 2*i for i in range(20)])
+                    for i, row in enumerate(data["records"]):
+                        # Midnight Seoul, previous UTC date. Exclude one stock date.
+                        row["timestamp"] = (start+timedelta(days=i-1)).isoformat()+"T15:00:00Z"
+                    del data["records"][3]
+                    return dict(data, symbol=symbol, provider="yahoo", currency="KRW", timeframe="1d")
                 if symbol != "^KS11":
                     raise ValueError("Yahoo offline")
                 return {"symbol": symbol, "source_url": "https://query1.finance.yahoo.com/", "records": bars}
 
             stack.enter_context(patch.object(app.sources, "chart_history", side_effect=prices))
-            saved = app.chart({"source": "yahoo", "symbol": "005930.KS"})
+            saved = app.chart({"source": "yahoo", "symbol": "005930.KS", "options": {"strategy":"none"}})
             fred = f"observation_date,NASDAQCOM\n{start},25400\n{today},25500\n".encode()
             stack.enter_context(patch("hyperpass.index_history._read", return_value=fred))
             server = serve(app, 0)
@@ -57,6 +61,17 @@ class MarketIndexBrowserTest(unittest.TestCase):
             value = page.locator("#market-index-atr-value")
             expect(atr).to_be_visible()
             expect(value).to_contain_text("4.00 pt")
+            page.locator("#market-atr-unit").select_option("pct")
+            expect(value).to_contain_text("3.33%")
+            page.locator("#market-compare").check()
+            expect(page.locator("#market-compare-note")).to_contain_text("공통 19거래일")
+            expect(page.locator("#market-compare-note")).to_contain_text("1일 제외")
+            comparison = page.locator("#market-compare-chart")
+            comparison.press("Home")
+            expect(page.locator("#market-compare-values")).to_contain_text(start.isoformat())
+            expect(page.locator("#market-compare-values .compare-stock")).to_contain_text("100.00")
+            comparison.press("End")
+            expect(page.locator("#market-compare-values .compare-stock")).to_contain_text("119.00")
             # Both panes move the same trading-day cursor.
             atr.press("Home")
             expect(page.locator("#market-index-values")).to_contain_text(start.isoformat())
@@ -69,8 +84,16 @@ class MarketIndexBrowserTest(unittest.TestCase):
             expect(price).to_be_visible()
             expect(atr).to_be_hidden()
             expect(value).to_contain_text("종가만 제공")
+            expect(page.locator("#market-compare-note")).to_contain_text("종목 KRW / 지수 USD")
             expect(page.locator("#chart-title")).to_have_text(stock_title)
             self.assertEqual(page.evaluate("window.HyperpassChart.lastResult().id"), saved["id"])
             page.set_viewport_size({"width": 375, "height": 812})
             self.assertLessEqual(price.bounding_box()["width"], 375)
+            for timeframe, note in [("1wk", "일봉으로 조회"), ("1d", "공통 거래일이 2일 미만")]:
+                chart = app.chart({"source": "csv", "symbol": "KRX:005930", "interval": timeframe,
+                    "csv": "time,open,high,low,close\n2020-01-01,50,55,49,52\n2020-01-08,52,54,48,53",
+                    "options": {"strategy": "none"}})
+                page.evaluate("(id) => window.HyperpassChart.open(id)", chart["id"])
+                expect(page.locator("#market-compare-note")).to_contain_text(note)
+                expect(comparison).to_be_hidden()
             self.assertEqual(errors, [])

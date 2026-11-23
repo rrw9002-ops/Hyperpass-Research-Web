@@ -289,6 +289,9 @@ class Application:
             metrics=(chart.get('backtest') or {}).get('metrics',{})
             if metrics:
                 summary+=f" · 로컬 계산 수익률 {metrics['total_return_pct']:+.2f}% · 완결 거래 {metrics['closed_trades']}회"
+            attached = (chart.get('personal_indicator') or {}).get('summary')
+            if attached:
+                summary+=f" · 개인 지표 {attached['name']} · 코드 {attached['code_sha256'][:12]}"
             items.append({'id':chart['id'],'type':'chart','title':f"{chart['symbol']} · {chart.get('timeframe','')} · {strategy}",
                           'created_at':chart['created_at'],'summary':summary,
                           'category':'stock','target_role':'technical-analyst','artifact_count':0,'status':'completed'})
@@ -353,13 +356,41 @@ class Application:
         self.store.put_chart(result)
         return result
 
-    def save_chart_preview(self, chart_id):
+    def save_chart_preview(self, chart_id, payload=None):
+        from .chart_overlay import overlay_snapshot
+        payload = {} if payload is None else payload
+        if not isinstance(payload, dict) or set(payload) - {'personal_indicator'}:
+            raise ValueError('저장할 차트 설정을 확인하세요.')
         with self.preview_lock:
             result = self.chart_previews.get(chart_id)
+            preview = result is not None
             if result is None:
-                if self.store.get_chart(chart_id) is None:
+                result = self.store.get_chart(chart_id)
+                if result is None:
                     raise ValueError('미리보기가 만료되었습니다. 차트를 다시 조회한 뒤 저장하세요.')
-            else:
+            if 'personal_indicator' in payload:
+                requested = payload['personal_indicator']
+                previous = result.get('personal_indicator')
+                snapshot = overlay_snapshot(result, requested) if requested is not None else None
+                if snapshot != previous:
+                    signature = [chart_id, snapshot['summary']['engine_version'], snapshot['summary']['name'],
+                                 snapshot['summary']['code_sha256']] if snapshot else [chart_id, 'without-overlay']
+                    new_id = uuid.uuid5(uuid.NAMESPACE_URL, json.dumps(signature)).hex
+                    if not self.store.get_chart(new_id):
+                        summary = dict(result['evidence_summary'])
+                        updated = dict(result, id=new_id, created_at=now(), observation_time=result.get('observation_time') or result['created_at'],
+                                       evidence_summary=summary)
+                        if not preview:
+                            updated['parent_chart_id'] = chart_id
+                        if snapshot:
+                            updated['personal_indicator'] = snapshot
+                            summary['personal_indicator'] = snapshot['summary']
+                        else:
+                            updated.pop('personal_indicator', None)
+                            summary.pop('personal_indicator', None)
+                        self.store.put_chart(updated)
+                    return {'id': new_id, 'saved': True}
+            if preview:
                 self.store.put_chart(result)
                 del self.chart_previews[chart_id]
         return {'id':chart_id, 'saved':True}
@@ -438,6 +469,8 @@ class Application:
                 'target_role':target_role if mode=='live' else None,'chart_id':chart_id if mode=='live' else None,
                 'tv_job_id':tv_job_id if mode=='live' else None,'team_snapshot':team_snapshot,
                 'report_complete':False,'progress':{'percent':0,'stage':'queued','label':'시작 준비','estimated':True}}
+            if mode == 'live' and chart_id and chart['evidence_summary'].get('personal_indicator'):
+                run['chart_indicator'] = chart['evidence_summary']['personal_indicator']
             self.store.put(run)
             self.active = run['id']
             self.stop_event = threading.Event()
@@ -496,6 +529,10 @@ class Application:
                 evidence=(self.root/'examples/offline-evidence.md').read_text(encoding='utf-8')
             result=Engine(provider,emit,self.stop_event.is_set,self.root,team_snapshot=run.get('team_snapshot')).run(
                 run['question'],evidence=evidence,context=run['context'],max_calls=run['max_calls'],web_search=web_search and run['mode']=='live',target_role=run.get('target_role'))
+            if run.get('chart_indicator') and result.get('report'):
+                result['report'] += ('\n\n## 첨부한 차트의 개인 지표\n\n분석을 시작할 때 전달된 계산 기록입니다. '
+                                     '관측값 또는 고점의 발생일과 확인 봉은 아래 저장본에서 확인할 수 있습니다.\n\n'
+                                     + '```json\n' + json.dumps(run['chart_indicator'], ensure_ascii=False, indent=2) + '\n```')
             with self.lock:
                 for key in ('status','report','artifacts','usage','progress','report_complete','reason','mandate','evidence_readiness','reviews','team_revision','team_document_revisions'):
                     if key in result: run[key]=advance_progress(result[key]) if key=='progress' else result[key]
@@ -692,7 +729,7 @@ class Handler(BaseHTTPRequestHandler):
             length=int(self.headers.get('Content-Length','0'))
             path = urlsplit(self.path).path
             limits = {'/api/charts': 2000000, '/api/backtests': 48 << 20, '/api/strategies': 48 << 20,
-                      '/api/backtests/preview': 48 << 20, '/api/backtests/fundamentals/import': 48 << 20}
+                      '/api/backtests/preview': 48 << 20, '/api/backtests/fundamentals/import': 48 << 20, '/api/backtests/membership/import': 12 << 20}
             if not 0 < length <= limits.get(path, 300000):
                 return self.send(413, {'error':'요청 크기를 확인해 주세요.'})
             payload=json.loads(self.rfile.read(length))
@@ -708,11 +745,16 @@ class Handler(BaseHTTPRequestHandler):
             if path == '/api/backtests/pine-template':
                 from .backtest_setup import pine_template
                 return self.send(200, pine_template(payload))
+            if path == '/api/backtests/membership/import':
+                from .membership import import_csv
+                return self.send(200, {'membership':import_csv(payload.get('market'), payload.get('csv'))})
             if path == '/api/backtests/fundamentals/import':
                 from .market_factors import import_fundamentals
                 return self.send(200, import_fundamentals(payload.get('market'), payload.get('csv')))
             if path == '/api/watchlist':
                 return self.send(200,self.app.desk.follow(payload))
+            if path == '/api/watchlist/decision':
+                return self.send(200,self.app.desk.update_watch_decision(payload))
             if path == '/api/watchlist/remove':
                 return self.send(200,self.app.desk.unfollow(payload.get('symbol')))
             if path == '/api/watchlist/quote':
@@ -739,7 +781,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200,launch(payload.get('port',9222)))
             save_chart = re.fullmatch(r'/api/charts/([a-f0-9]{32})/save',path)
             if save_chart:
-                return self.send(200,self.app.save_chart_preview(save_chart[1]))
+                return self.send(200,self.app.save_chart_preview(save_chart[1],payload))
             if path=='/api/charts':
                 return self.send(201,self.app.chart(payload))
             discover=re.fullmatch(r'/api/ai/(openai|anthropic|gemini)/models',path)

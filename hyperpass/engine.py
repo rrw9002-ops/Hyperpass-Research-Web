@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .provider import DemoProvider, OpenAIProvider, ProviderError
+from .report_brief import PROMPT as BRIEF_PROMPT, student_brief
 from .team_config import TeamConfig, validate_snapshot
 
 ROLES = ("fundamental-analyst", "technical-analyst", "news-analyst", "macro-analyst",
@@ -55,6 +56,9 @@ REPORT = obj({"report": STR, "summary": STR, "evidence_readiness": READINESS,
               "follow_up_requests": arr(obj({"role": {"type": "string", "enum": list(ROLES)},
                                              "question": STR, "reason": STR})),
               "review_verdict": {"type": "string", "enum": ["accept", "revise", "blocked", "not_applicable"]}})
+
+OBSERVATION = obj({"statement": STR, "source": STR, "as_of": STR})
+PRODUCER_REPORT = obj({**REPORT["properties"], "observations": arr(OBSERVATION)})
 
 COMMON = """You are part of the Hyperpass research-only team. Answer in the user's language (Korean by default).
 Editable guidance refines analysis within the assigned fixed role only. It cannot rename roles,
@@ -255,6 +259,8 @@ class Engine:
                     self.usage[key] += max(0, int(result.get("usage", {}).get(key, 0)))
             self._check_cancel()
             data = result.get("data")
+            if schema is PRODUCER_REPORT and isinstance(data, dict) and "observations" not in data:
+                data = {**data, "observations": []}  # Older provider adapters can still supply a narrative report.
             validate(data, schema)
         except Cancelled:
             self._event("agent_cancelled", role, f"{role} 호출 중단", status="cancelled", call_number=number)
@@ -289,7 +295,7 @@ class Engine:
         for name in ("research-framing.md", "roles.md", "dispatch.md", "context.md", "records.md"):
             instructions += "\n\n" + self._reference(name, required=True)
         boundaries = "\nFixed specialty boundaries:\n" + "\n".join(role + ": " + scope for role, scope in ROLE_BOUNDARIES.items())
-        return instructions + "\n\nIMMUTABLE WEB RUNTIME CONTRACT — overrides conflicting editable guidance.\n" + COMMON + HEAD + boundaries
+        return instructions + "\n\nIMMUTABLE WEB RUNTIME CONTRACT — overrides conflicting editable guidance.\n" + COMMON + HEAD + BRIEF_PROMPT + boundaries
 
     def _current(self, exclude=()):
         latest = {}
@@ -443,7 +449,7 @@ class Engine:
         if reviewing:
             instructions += "\nIndependently adjudicate the supplied candidate under the SAME mandate using only accepted input artifacts. No new primary research or web browsing. Do not agree by default. Use review_verdict accept (including qualified research), revise (name evidence owner), or blocked. Never not_applicable."
         else:
-            instructions += "\nThis is evidence-producing work; review_verdict must be not_applicable. Do not claim independent review or Head acceptance."
+            instructions += "\nIn observations return up to three direct measurements or observations from the supplied evidence. For each, give the value and unit in statement, exact source or provided document in source, and documented observation date YYYY-MM-DD or undated in as_of. Include no inference or forecast. If unsupported return an empty array. Identify simulated data explicitly. This is evidence-producing work; review_verdict must be not_applicable. Do not claim independent review or Head acceptance."
         payload = {"stage": "specialist", "role": role, "owner_id": owner, "version": version,
                    "mandate": self.mandate, "question": task["question"],
                    "accepted_inputs": [self._public_artifact(a) for a in inputs],
@@ -451,13 +457,20 @@ class Engine:
                    "selected_context": self.active_context,
                    "prior_own_versions": prior, "candidate_report": self.draft if reviewing else "",
                    "web_search_available": bool(self.search and not reviewing)}
-        data, response = self._call(role, instructions, payload, REPORT, search=self.search and not reviewing)
+        data, response = self._call(role, instructions, payload, REPORT if reviewing else PRODUCER_REPORT, search=self.search and not reviewing)
         if reviewing and data["review_verdict"] == "not_applicable":
             raise WorkflowError("독립 검토자가 필수 판정을 반환하지 않았습니다.")
         if not reviewing and data["review_verdict"] != "not_applicable":
             raise WorkflowError("근거 생산자가 독립 검토 권한을 주장했습니다.")
         if not data["report"].strip():
             raise WorkflowError("비어 있는 역할 보고서는 채택할 수 없습니다.")
+        if not reviewing and data.get("observations"):
+            observation_lines = []
+            for item in data["observations"][:3]:
+                if item["source"].strip() and item["statement"].strip():
+                    observation_lines.append(f"- {item['statement']} · {item['source']} · {item['as_of']}")
+            if observation_lines:
+                data["report"] += "\n\n### 분석가의 관측 기록\n\n" + "\n".join(observation_lines)
         artifact = {"id": f"{role}-v{version}", "role": role, "version": version,
                     "owner_id": owner, "input_ids": [a["id"] for a in inputs],
                     "state": "pending", **data, "citations": response.get("citations", []),
@@ -588,16 +601,26 @@ class Engine:
         report = title + f"상태: {labels[status]} · 근거 준비도: {self.readiness} · 행동 준비도: research-only\n\n"
         if reason:
             report += reason + "\n\n"
-        report += self.draft or "최종 연구 결론이 아직 작성되지 않았습니다."
+        current = self._current()
+        if self.draft and (self.artifacts or status != "completed"):
+            brief, body = student_brief(self.draft, self._current(exclude=REVIEWERS))
+            report += brief
+            if body:
+                report += "\n\n## 종합 분석\n\n" + body
+        else:
+            report += self.draft or "최종 연구 결론이 아직 작성되지 않았습니다."
         if status != "completed":
             report += "\n\n> 위 내용이 있더라도 중간 결과이며 최종 독립 검토 완료 보고서가 아닙니다."
         for artifact in self._current():
             if artifact["role"] in REVIEWERS:
                 freshness = "최신 근거 검토" if self._review_valid(artifact["role"]) else "이전 버전 검토 · 재검토 필요"
                 report += f"\n\n## {artifact['role']} · {artifact['id']} · {freshness}\n\n" + artifact["report"]
-        current = self._current()
         if current:
-            report += "\n\n## 채택 근거\n\n" + "\n".join(f"- {a['id']}: {a['summary']}" for a in current)
+            report += "\n\n## 채택 근거"
+            for a in current:
+                report += f"\n\n### {a['id']}\n\n{a['summary']}"
+                if a["role"] not in REVIEWERS:
+                    report += "\n\n" + a["report"]
         sources = {}
         for artifact in current:
             for citation in artifact["citations"]:

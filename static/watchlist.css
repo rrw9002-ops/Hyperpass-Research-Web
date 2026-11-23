@@ -11,3 +11,5 @@
 .watch-form{display:grid;gap:.7rem;padding:clamp(1rem,3vw,1.7rem)}.watch-form h2{margin:0}
 #watch-dialog{width:min(28rem,calc(100% - 2rem))}#watch-dialog .watch-controls{justify-content:flex-end}
 .watch-panel:focus-within,.watch-actions:focus-within{scroll-margin-top:5rem}
+
+.watch-history{margin:.6rem 0;font-size:.83rem}.watch-history summary{cursor:pointer;color:var(--accent)}.watch-history section{border-left:2px solid var(--line);margin:.65rem 0;padding-left:.65rem}.watch-history p{overflow-wrap:anywhere;white-space:pre-line;color:var(--muted)}#watch-note-dialog{width:min(32rem,calc(100% - 2rem))}#watch-note-dialog textarea{width:100%}

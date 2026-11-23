@@ -69,6 +69,10 @@ class ResearchDesk:
             db.execute("""CREATE TABLE IF NOT EXISTS watchlist(
                 symbol TEXT PRIMARY KEY, name TEXT NOT NULL, yahoo TEXT NOT NULL, run_id TEXT,
                 chart_id TEXT, added_at TEXT NOT NULL, quote TEXT)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS watch_decisions(
+                symbol TEXT PRIMARY KEY, selection TEXT, thesis TEXT NOT NULL DEFAULT '',
+                invalidation TEXT NOT NULL DEFAULT '', updated_at TEXT, first_note TEXT)""")
+
 
     def strategies(self):
         with self.store.connect() as db:
@@ -119,9 +123,12 @@ class ResearchDesk:
 
     def list_jobs(self):
         with self.store.connect() as db:
-            rows = db.execute('SELECT id,name,mode,status,progress,error,created_at,finished_at FROM backtests ORDER BY created_at DESC LIMIT 100')
-            return [dict(id=i,name=n,mode=m,status=s,progress=json.loads(p),error=e,created_at=c,finished_at=f)
-                    for i,n,m,s,p,e,c,f in rows]
+            rows = db.execute("""SELECT id,name,mode,status,progress,error,created_at,finished_at,
+                              json_extract(request,'$.engine'), json_extract(request,'$.selection_snapshot.selected_at'),
+                              json_type(request,'$.membership') FROM backtests ORDER BY created_at DESC LIMIT 100""")
+            return [dict(id=i,name=n,mode=m,status=s,progress=json.loads(p),error=e,created_at=c,finished_at=f,
+                         engine=engine or 'portfolio',selected_at=selected,historical=hist=='array')
+                    for i,n,m,s,p,e,c,f,engine,selected,hist in rows]
 
     def job(self, identity):
         with self.store.connect() as db:
@@ -263,13 +270,25 @@ class ResearchDesk:
 
     def watchlist(self):
         with self.store.connect() as db:
-            rows = db.execute('SELECT symbol,name,yahoo,run_id,chart_id,added_at,quote FROM watchlist ORDER BY added_at DESC,symbol')
-            return [dict(symbol=s,name=n,yahoo=y,run_id=r,chart_id=c,added_at=t,quote=json.loads(q) if q else None)
-                    for s,n,y,r,c,t,q in rows]
+            rows = db.execute("""SELECT w.symbol,w.name,w.yahoo,w.run_id,w.chart_id,w.added_at,w.quote,
+                                         d.selection,d.thesis,d.invalidation,d.updated_at,d.first_note
+                                  FROM watchlist w LEFT JOIN watch_decisions d ON w.symbol=d.symbol
+                                  ORDER BY w.added_at DESC,w.symbol""")
+            return [dict(symbol=s, name=n, yahoo=y, run_id=r, chart_id=c, added_at=t, quote=json.loads(q) if q else None,
+                         selection_snapshot=json.loads(selection) if selection else None, thesis=thesis or '',
+                         invalidation=invalidation or '', decision_updated_at=updated,
+                         first_note=json.loads(first) if first else None)
+                    for s,n,y,r,c,t,q,selection,thesis,invalidation,updated,first in rows]
 
     def follow(self, payload):
         from .symbol_search import resolve_symbol
-        item = resolve_symbol(payload.get('symbol',''), 'any')
+        from .selection_snapshot import normalize_selection
+        selection = None
+        if payload.get('selection_snapshot') is not None:
+            selection = normalize_selection(payload['selection_snapshot'], symbols=[payload.get('symbol')])
+            item = selection['members'][0]
+        else:
+            item = resolve_symbol(payload.get('symbol', ''), 'any')
         symbol = item.get('id') or item['yahoo']
         run_id, chart_id = payload.get('run_id'), payload.get('chart_id')
         if run_id is not None and (not isinstance(run_id,str) or not self.store.get(run_id)):
@@ -282,13 +301,38 @@ class ResearchDesk:
                           chart_id=coalesce(excluded.chart_id,watchlist.chart_id),
                           yahoo=excluded.yahoo, name=excluded.name""",
                        (symbol,item['name'],item.get('yahoo') or '',run_id,chart_id,timestamp()))
+            if selection:
+                db.execute("""INSERT INTO watch_decisions(symbol,selection) VALUES (?,?)
+                              ON CONFLICT(symbol) DO UPDATE SET selection=coalesce(watch_decisions.selection,excluded.selection)""",
+                           (symbol,pack(selection)))
         return {'symbol':symbol,'name':item['name']}
+
+    def update_watch_decision(self, payload):
+        symbol = payload.get('symbol')
+        thesis, invalidation = payload.get('thesis'), payload.get('invalidation')
+        if (not isinstance(symbol, str) or any(not isinstance(value,str) or len(value)>2000
+                                              for value in (thesis,invalidation))):
+            raise ValueError('선정 가설과 반증 조건을 각각 2,000자 이내로 입력하세요.')
+        now = timestamp()
+        thesis, invalidation = thesis.strip(), invalidation.strip()
+        first = pack(dict(thesis=thesis,invalidation=invalidation,updated_at=now)) if thesis or invalidation else None
+        with self.store.connect() as db:
+            changed = db.execute("""INSERT INTO watch_decisions(symbol,thesis,invalidation,updated_at,first_note)
+                                  SELECT symbol,?,?,?,? FROM watchlist WHERE symbol=?
+                                  ON CONFLICT(symbol) DO UPDATE SET thesis=excluded.thesis,
+                                  invalidation=excluded.invalidation,updated_at=excluded.updated_at,
+                                  first_note=coalesce(watch_decisions.first_note,excluded.first_note)""",
+                                 (thesis,invalidation,now,first,symbol)).rowcount
+            if not changed:
+                raise ValueError('먼저 등록된 관심종목을 선택하세요.')
+        return dict(updated_at=now,thesis=thesis,invalidation=invalidation)
 
     def unfollow(self, symbol):
         if not isinstance(symbol,str):
             raise ValueError('관심종목을 선택하세요.')
         with self.store.connect() as db:
             db.execute('DELETE FROM watchlist WHERE symbol=?',(symbol,))
+            db.execute('DELETE FROM watch_decisions WHERE symbol=?',(symbol,))
         return {'removed':True}
 
     def quote(self, symbol, sources):
